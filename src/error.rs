@@ -7,7 +7,7 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Fail, Debug)]
 pub enum ErrorKind {
-    #[fail(display = "IO error")]
+    #[fail(display = "io error")]
     Io,
 }
 
