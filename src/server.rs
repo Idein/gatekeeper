@@ -1,11 +1,11 @@
-use std::net::ToSocketAddrs;
-use std::ops::Deref;
+use std::net::SocketAddr;
 use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 
 use log::*;
 
 use crate::acceptor::Binder;
+use crate::byte_stream::ByteStream;
 use crate::error::Error;
 use crate::server_command::ServerCommand;
 
@@ -16,21 +16,18 @@ pub struct Server<T> {
 }
 
 fn spawn_acceptor(
-    binder: impl Deref<Target = impl Binder>,
+    acceptor: impl Iterator<Item = (impl ByteStream + Send + 'static, SocketAddr)> + Send + 'static,
     tx: SyncSender<ServerCommand>,
-    addr: impl ToSocketAddrs,
-) -> Result<thread::JoinHandle<()>, Error> {
-    let acceptor = binder.bind(addr)?;
-    Ok(thread::spawn(move || {
-        use ServerCommand::*;
+) -> thread::JoinHandle<()> {
+    use ServerCommand::*;
+    thread::spawn(move || {
         for (strm, addr) in acceptor {
-            info!("accept: {}", addr);
             if tx.send(Connect(Box::new(strm), addr)).is_err() {
                 info!("disconnected ServerCommand chan");
                 break;
             }
         }
-    }))
+    })
 }
 
 impl<T> Server<T>
@@ -50,7 +47,8 @@ where
     }
 
     pub fn serve(&self) -> Result<(), Error> {
-        spawn_acceptor(&self.binder, self.tx_cmd.clone(), "127.0.0.1:1080")?;
+        let acceptor = self.binder.bind("127.0.0.1:1080")?;
+        spawn_acceptor(acceptor, self.tx_cmd.clone());
 
         while let Ok(cmd) = self.rx_cmd.recv() {
             use ServerCommand::*;
