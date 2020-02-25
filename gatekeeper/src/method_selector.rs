@@ -1,5 +1,7 @@
 use model::{Error, Method};
 
+use crate::auth_service::{AuthService, NoAuthService};
+
 pub trait MethodSelector: Send {
     type A: AuthService;
     /// decide auth method from candidates
@@ -9,11 +11,6 @@ pub trait MethodSelector: Send {
     fn select(&self, candidates: &[Method]) -> Result<Option<(Method, Self::A)>, Error>;
     /// enumerate supported auth method
     fn supported(&self) -> &[Method];
-}
-
-pub trait AuthService {
-    // TODO: impl
-    // fn auth(&self) -> Result<RelayConnector, Error>;
 }
 
 /// `NoAuth` method compeller
@@ -42,7 +39,3 @@ impl MethodSelector for OnlyNoAuth {
         std::slice::from_ref(&self.no_auth)
     }
 }
-
-pub struct NoAuthService;
-
-impl AuthService for NoAuthService {}

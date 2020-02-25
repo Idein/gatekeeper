@@ -1,8 +1,10 @@
 mod acceptor;
+mod auth_service;
 mod byte_stream;
 mod connector;
 pub mod error;
 mod method_selector;
+mod relay_connector;
 pub mod server;
 mod server_command;
 mod session;

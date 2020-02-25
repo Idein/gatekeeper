@@ -1,7 +1,8 @@
+use std::fmt;
 use std::io;
 use std::net::TcpStream;
 
-pub trait ByteStream: io::Read + io::Write + Send {}
+pub trait ByteStream: fmt::Debug + io::Read + io::Write + Send {}
 
 impl ByteStream for TcpStream {}
 
