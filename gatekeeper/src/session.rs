@@ -24,6 +24,6 @@ where
     }
 
     pub fn start(&self) -> Result<(), Error> {
-        unimplemented!("Session::start")
+        unimplemented!("Session::start");
     }
 }
