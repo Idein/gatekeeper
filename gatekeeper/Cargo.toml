@@ -1,0 +1,13 @@
+[package]
+name = "gatekeeper"
+version = "0.1.0"
+authors = ["eldesh <nephits@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+failure = "0.1.6"
+pretty_env_logger = "0.3.0"
+log = "0.4.6"
+serde = "1"
+serde_derive = "1"
+model = { path = "../model" }
