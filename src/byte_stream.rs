@@ -1,9 +1,15 @@
 use std::io;
 use std::net::TcpStream;
 
-pub trait ByteStream: io::Read + io::Write {}
+pub trait ByteStream: io::Read + io::Write + Send {}
 
 impl ByteStream for TcpStream {}
+
+impl<S: ByteStream> ByteStream for Box<S> {}
+
+pub type BoxedStream = Box<dyn ByteStream + 'static>;
+
+impl ByteStream for BoxedStream {}
 
 #[cfg(test)]
 pub mod test {

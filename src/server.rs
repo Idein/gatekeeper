@@ -6,17 +6,22 @@ use log::*;
 
 use crate::acceptor::Binder;
 use crate::byte_stream::ByteStream;
+use crate::connector::Connector;
 use crate::error::Error;
 use crate::server_command::ServerCommand;
+use crate::session::Session;
 
-pub struct Server<T> {
+pub struct Server<T, C> {
     tx_cmd: mpsc::SyncSender<ServerCommand>,
     rx_cmd: mpsc::Receiver<ServerCommand>,
+    /// bind server address
     binder: T,
+    /// make connection to service host
+    connector: C,
 }
 
 fn spawn_acceptor(
-    acceptor: impl Iterator<Item = (impl ByteStream + Send + 'static, SocketAddr)> + Send + 'static,
+    acceptor: impl Iterator<Item = (impl ByteStream + 'static, SocketAddr)> + Send + 'static,
     tx: SyncSender<ServerCommand>,
 ) -> thread::JoinHandle<()> {
     use ServerCommand::*;
@@ -30,17 +35,27 @@ fn spawn_acceptor(
     })
 }
 
-impl<T> Server<T>
+fn spawn_session<C, D>(session: Session<C, D>) -> thread::JoinHandle<Result<(), Error>>
+where
+    C: ByteStream + 'static,
+    D: Connector + 'static,
+{
+    thread::spawn(move || session.start())
+}
+
+impl<T, C> Server<T, C>
 where
     T: Binder,
+    C: Connector + Clone + 'static,
 {
-    pub fn new(binder: T) -> (Self, mpsc::SyncSender<ServerCommand>) {
+    pub fn new(binder: T, connector: C) -> (Self, mpsc::SyncSender<ServerCommand>) {
         let (tx, rx) = mpsc::sync_channel(0);
         (
             Self {
                 tx_cmd: tx.clone(),
                 rx_cmd: rx,
                 binder,
+                connector,
             },
             tx,
         )
@@ -52,10 +67,14 @@ where
 
         while let Ok(cmd) = self.rx_cmd.recv() {
             use ServerCommand::*;
-            debug!("cmd: {:?}", cmd);
+            info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => break,
-                Connect(_stream, _addr) => {}
+                Connect(stream, addr) => {
+                    info!("connect from: {}", addr);
+                    let session = Session::new(stream, addr, self.connector.clone());
+                    spawn_session(session);
+                }
             }
         }
         info!("server shutdown");

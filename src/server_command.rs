@@ -3,13 +3,13 @@
 use std::fmt;
 use std::net::SocketAddr;
 
-use crate::byte_stream::ByteStream;
+use crate::byte_stream::BoxedStream;
 
 pub enum ServerCommand {
     /// terminate
     Terminate,
     /// connected stream and client address
-    Connect(Box<dyn ByteStream + Send>, SocketAddr),
+    Connect(BoxedStream, SocketAddr),
 }
 
 impl fmt::Debug for ServerCommand {
