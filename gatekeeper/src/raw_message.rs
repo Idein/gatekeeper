@@ -1,9 +1,11 @@
 ///! RFC1928 SOCKS Protocol Version 5 Raw Message Types
+///! For each type structures correspond to SOCKS5 packet layout.
 ///!
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::io;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
+use std::net::ToSocketAddrs;
+pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
 use model;
 

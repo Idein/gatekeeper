@@ -9,6 +9,16 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
+    #[fail(display = "message format error: {}", message)]
+    MessageFormat { message: String },
+}
+
+impl ErrorKind {
+    pub fn message_fmt(message: fmt::Arguments) -> Self {
+        ErrorKind::MessageFormat {
+            message: message.to_string(),
+        }
+    }
 }
 
 #[derive(Debug)]

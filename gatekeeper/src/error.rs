@@ -2,6 +2,7 @@ use std::fmt;
 use std::fmt::Display;
 
 use failure::{Backtrace, Context, Fail};
+use model;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
@@ -9,6 +10,18 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
+    #[fail(display = "unknown error")]
+    Unknown,
+}
+
+impl ErrorKind {
+    fn from_model_error(err: model::Error) -> std::result::Result<Error, model::Error> {
+        use model::ErrorKind as K;
+        match err.kind() {
+            K::Io => Ok(err.context(ErrorKind::Io).into()),
+            K::MessageFormat { .. } => Ok(err.context(ErrorKind::Unknown).into()),
+        }
+    }
 }
 
 #[derive(Debug)]

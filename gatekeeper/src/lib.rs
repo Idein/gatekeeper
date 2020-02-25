@@ -6,6 +6,7 @@ pub mod error;
 mod method_selector;
 mod raw_message;
 mod relay_connector;
+mod rw_socks_stream;
 pub mod server;
 mod server_command;
 mod session;
