@@ -8,6 +8,7 @@ use crate::acceptor::Binder;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::error::Error;
+use crate::method_selector::{MethodSelector, OnlyNoAuth};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
 
@@ -37,10 +38,11 @@ fn spawn_acceptor(
 }
 
 /// spawn a thread perform `Session.start`
-fn spawn_session<C, D>(session: Session<C, D>) -> thread::JoinHandle<Result<(), Error>>
+fn spawn_session<C, D, S>(session: Session<C, D, S>) -> thread::JoinHandle<Result<(), Error>>
 where
     C: ByteStream + 'static,
     D: Connector + 'static,
+    S: MethodSelector + 'static,
 {
     thread::spawn(move || session.start())
 }
@@ -74,7 +76,8 @@ where
                 Terminate => break,
                 Connect(stream, addr) => {
                     info!("connect from: {}", addr);
-                    let session = Session::new(stream, addr, self.connector.clone());
+                    let session =
+                        Session::new(stream, addr, self.connector.clone(), OnlyNoAuth::new());
                     spawn_session(session);
                 }
             }
