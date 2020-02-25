@@ -1,5 +1,4 @@
-use crate::error::Error;
-use model::*;
+use model::{Error, Method};
 
 pub trait MethodSelector {
     type A: AuthService;
