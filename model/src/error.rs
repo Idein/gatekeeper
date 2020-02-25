@@ -11,6 +11,10 @@ pub enum ErrorKind {
     Io,
     #[fail(display = "message format error: {}", message)]
     MessageFormat { message: String },
+    #[fail(display = "authentication error: general")]
+    Authentication,
+    #[fail(display = "authentication error: unrecognized username/password")]
+    UnrecognizedUsernamePassword,
 }
 
 impl ErrorKind {

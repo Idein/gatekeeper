@@ -1,4 +1,3 @@
-use std::net::SocketAddr;
 use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 
@@ -12,7 +11,7 @@ use crate::method_selector::{MethodSelector, OnlyNoAuth};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
 
-use model::ProtocolVersion;
+use model::{ProtocolVersion, SocketAddr};
 
 pub struct Server<T, C> {
     tx_cmd: mpsc::SyncSender<ServerCommand>,
@@ -41,11 +40,11 @@ fn spawn_acceptor(
 }
 
 /// spawn a thread perform `Session.start`
-fn spawn_session<C, D, S>(mut session: Session<C, D, S>) -> thread::JoinHandle<Result<(), Error>>
+fn spawn_session<C, D, M>(mut session: Session<C, D, M>) -> thread::JoinHandle<Result<(), Error>>
 where
     C: ByteStream + 'static,
     D: Connector + 'static,
-    S: MethodSelector + 'static,
+    M: MethodSelector<C> + 'static,
 {
     thread::spawn(move || session.start())
 }
@@ -86,6 +85,7 @@ where
                         addr,
                         self.connector.clone(),
                         OnlyNoAuth::new(),
+                        SocketAddr::from(([127, 0, 0, 1], 1080)).into(),
                     );
                     spawn_session(session);
                 }

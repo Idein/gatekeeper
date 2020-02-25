@@ -1,9 +1,10 @@
 use model::{Error, Method};
 
 use crate::auth_service::{AuthService, NoAuthService};
+use crate::byte_stream::ByteStream;
 
-pub trait MethodSelector: Send {
-    type A: AuthService;
+pub trait MethodSelector<S: ByteStream>: Send {
+    type A: AuthService<S>;
     /// decide auth method from candidates
     ///
     /// # Details
@@ -26,8 +27,12 @@ impl OnlyNoAuth {
     }
 }
 
-impl MethodSelector for OnlyNoAuth {
+impl<S> MethodSelector<S> for OnlyNoAuth
+where
+    S: ByteStream,
+{
     type A = NoAuthService;
+
     fn select(&self, candidates: &[Method]) -> Result<Option<(Method, Self::A)>, Error> {
         if candidates.contains(&Method::NoAuth) {
             Ok(Some((Method::NoAuth, NoAuthService)))
@@ -35,6 +40,7 @@ impl MethodSelector for OnlyNoAuth {
             Ok(None)
         }
     }
+
     fn supported(&self) -> &[Method] {
         std::slice::from_ref(&self.no_auth)
     }

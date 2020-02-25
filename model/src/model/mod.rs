@@ -35,7 +35,7 @@ pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 pub struct ProtocolVersion(u8);
 
 /// Authentication Methods
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Display)]
 pub enum Method {
     /// No Authentication
     NoAuth,
@@ -77,6 +77,12 @@ pub enum Address {
     Domain(String, u16),
 }
 
+impl From<SocketAddr> for Address {
+    fn from(addr: SocketAddr) -> Self {
+        Address::IpAddr(addr.ip().clone(), addr.port())
+    }
+}
+
 impl ToSocketAddrs for Address {
     type Iter = std::vec::IntoIter<SocketAddr>;
 
@@ -111,6 +117,19 @@ pub enum ConnectError {
     TtlExpired,
     CommandNotSupported,
     AddrTypeNotSupported,
+}
+
+impl From<crate::error::Error> for ConnectError {
+    fn from(err: crate::error::Error) -> Self {
+        use crate::error::ErrorKind as K;
+        use ConnectError as CErr;
+        match err.kind() {
+            K::Io => CErr::ServerFailure,
+            K::MessageFormat { .. } => CErr::ServerFailure,
+            K::Authentication => CErr::ConnectionNotAllowed,
+            K::UnrecognizedUsernamePassword => CErr::ConnectionNotAllowed,
+        }
+    }
 }
 
 impl std::error::Error for ConnectError {

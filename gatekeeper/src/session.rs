@@ -3,7 +3,7 @@ use log::*;
 use crate::auth_service::*;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
-use crate::error::Error;
+use crate::error::{self, Error};
 use crate::method_selector::MethodSelector;
 use crate::relay_connector::RelayConnector;
 use crate::rw_socks_stream::ReadWriteStream;
@@ -18,13 +18,14 @@ pub struct Session<C, D, S> {
     pub src_addr: SocketAddr,
     pub dst_connector: D,
     pub method_selector: S,
+    pub server_addr: SocketAddr,
 }
 
 impl<C, D, S> Session<C, D, S>
 where
     C: ByteStream + 'static,
     D: Connector,
-    S: MethodSelector,
+    S: MethodSelector<C>,
 {
     pub fn new(
         version: ProtocolVersion,
@@ -32,6 +33,7 @@ where
         src_addr: SocketAddr,
         dst_connector: D,
         method_selector: S,
+        server_addr: SocketAddr,
     ) -> Self {
         Self {
             version,
@@ -39,6 +41,15 @@ where
             src_addr,
             dst_connector,
             method_selector,
+            server_addr,
+        }
+    }
+
+    fn connect_reply(&self, connect_result: ConnectResult) -> ConnectReply {
+        ConnectReply {
+            version: self.version,
+            connect_result,
+            server_addr: self.server_addr.clone().into(),
         }
     }
 
@@ -64,12 +75,19 @@ where
             (src_conn, selection)
         };
 
-        let relay_conn = if let Some((m, s)) = selection {
-            s.auth(src_conn)?
-        } else {
-            RelayConnector::new(src_conn)
+        let _relay = match auth_with_selection(src_conn, selection) {
+            Ok(mut relay) => {
+                let mut strm = ReadWriteStream::new(relay.tcp_stream());
+                strm.send_connect_reply(self.connect_reply(Ok(())))?;
+                relay
+            }
+            Err(AuthServiceError { mut strm, error }) => {
+                info!("authentication error: {:?}", error);
+                let mut strm = ReadWriteStream::new(&mut strm);
+                strm.send_connect_reply(self.connect_reply(Err(error.into())))?;
+                return Err(error::ErrorKind::Auth.into());
+            }
         };
-        trace!("relay_conn: {:?}", relay_conn);
 
         unimplemented!("Session::start");
     }
