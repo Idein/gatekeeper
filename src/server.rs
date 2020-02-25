@@ -20,6 +20,7 @@ pub struct Server<T, C> {
     connector: C,
 }
 
+/// spawn a thread send accepted stream to `tx`
 fn spawn_acceptor(
     acceptor: impl Iterator<Item = (impl ByteStream + 'static, SocketAddr)> + Send + 'static,
     tx: SyncSender<ServerCommand>,
@@ -35,6 +36,7 @@ fn spawn_acceptor(
     })
 }
 
+/// spawn a thread perform `Session.start`
 fn spawn_session<C, D>(session: Session<C, D>) -> thread::JoinHandle<Result<(), Error>>
 where
     C: ByteStream + 'static,
