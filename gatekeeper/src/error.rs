@@ -14,16 +14,6 @@ pub enum ErrorKind {
     Unknown,
 }
 
-impl ErrorKind {
-    fn from_model_error(err: model::Error) -> std::result::Result<Error, model::Error> {
-        use model::ErrorKind as K;
-        match err.kind() {
-            K::Io => Ok(err.context(ErrorKind::Io).into()),
-            K::MessageFormat { .. } => Ok(err.context(ErrorKind::Unknown).into()),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct Error {
     inner: Context<ErrorKind>,
@@ -74,5 +64,16 @@ impl From<std::io::Error> for Error {
         Error {
             inner: error.context(ErrorKind::Io),
         }
+    }
+}
+
+impl From<model::Error> for Error {
+    fn from(err: model::Error) -> Self {
+        use model::ErrorKind as K;
+        let ctx = match err.kind() {
+            K::Io => err.context(ErrorKind::Io),
+            K::MessageFormat { .. } => err.context(ErrorKind::Unknown),
+        };
+        Error { inner: ctx }
     }
 }

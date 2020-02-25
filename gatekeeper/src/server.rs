@@ -12,6 +12,8 @@ use crate::method_selector::{MethodSelector, OnlyNoAuth};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
 
+use model::ProtocolVersion;
+
 pub struct Server<T, C> {
     tx_cmd: mpsc::SyncSender<ServerCommand>,
     rx_cmd: mpsc::Receiver<ServerCommand>,
@@ -19,6 +21,7 @@ pub struct Server<T, C> {
     binder: T,
     /// make connection to service host
     connector: C,
+    protocol_version: ProtocolVersion,
 }
 
 /// spawn a thread send accepted stream to `tx`
@@ -38,7 +41,7 @@ fn spawn_acceptor(
 }
 
 /// spawn a thread perform `Session.start`
-fn spawn_session<C, D, S>(session: Session<C, D, S>) -> thread::JoinHandle<Result<(), Error>>
+fn spawn_session<C, D, S>(mut session: Session<C, D, S>) -> thread::JoinHandle<Result<(), Error>>
 where
     C: ByteStream + 'static,
     D: Connector + 'static,
@@ -60,6 +63,7 @@ where
                 rx_cmd: rx,
                 binder,
                 connector,
+                protocol_version: ProtocolVersion::from(5),
             },
             tx,
         )
@@ -76,8 +80,13 @@ where
                 Terminate => break,
                 Connect(stream, addr) => {
                     info!("connect from: {}", addr);
-                    let session =
-                        Session::new(stream, addr, self.connector.clone(), OnlyNoAuth::new());
+                    let session = Session::new(
+                        self.protocol_version,
+                        stream,
+                        addr,
+                        self.connector.clone(),
+                        OnlyNoAuth::new(),
+                    );
                     spawn_session(session);
                 }
             }
