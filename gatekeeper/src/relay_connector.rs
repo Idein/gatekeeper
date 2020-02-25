@@ -1,8 +1,24 @@
-use crate::byte_stream::BoxedStream;
+use crate::byte_stream::{BoxedStream, ByteStream};
 
 #[derive(Debug)]
 pub struct RelayConnector {
-    pub tcp: BoxedStream,
+    tcp: BoxedStream,
     // TODO: impl
-    pub udp: (),
+    udp: (),
+}
+
+impl RelayConnector {
+    pub fn new<S>(tcp: S) -> Self
+    where
+        S: ByteStream + 'static,
+    {
+        Self {
+            tcp: Box::new(tcp),
+            udp: (),
+        }
+    }
+
+    pub fn tcp(&self) -> &dyn ByteStream {
+        &self.tcp
+    }
 }

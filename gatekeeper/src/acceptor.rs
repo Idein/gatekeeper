@@ -24,7 +24,7 @@ impl Iterator for TcpAcceptor {
 }
 
 pub trait Binder {
-    type Stream: ByteStream + Send + 'static;
+    type Stream: ByteStream + 'static;
     type Iter: Iterator<Item = (Self::Stream, SocketAddr)> + Send + 'static;
     fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<Self::Iter, Error>;
 }
