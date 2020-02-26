@@ -13,9 +13,9 @@ use crate::session::Session;
 
 use model::{ProtocolVersion, SocketAddr};
 
-pub struct Server<T, C> {
-    tx_cmd: mpsc::SyncSender<ServerCommand>,
-    rx_cmd: mpsc::Receiver<ServerCommand>,
+pub struct Server<S, T, C> {
+    tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
+    rx_cmd: mpsc::Receiver<ServerCommand<S>>,
     /// bind server address
     binder: T,
     /// make connection to service host
@@ -24,14 +24,17 @@ pub struct Server<T, C> {
 }
 
 /// spawn a thread send accepted stream to `tx`
-fn spawn_acceptor(
-    acceptor: impl Iterator<Item = (impl ByteStream + 'static, SocketAddr)> + Send + 'static,
-    tx: SyncSender<ServerCommand>,
-) -> thread::JoinHandle<()> {
+fn spawn_acceptor<S>(
+    acceptor: impl Iterator<Item = (S, SocketAddr)> + Send + 'static,
+    tx: SyncSender<ServerCommand<S>>,
+) -> thread::JoinHandle<()>
+where
+    S: ByteStream + 'static + Send,
+{
     use ServerCommand::*;
     thread::spawn(move || {
         for (strm, addr) in acceptor {
-            if tx.send(Connect(Box::new(strm), addr)).is_err() {
+            if tx.send(Connect(strm, addr)).is_err() {
                 info!("disconnected ServerCommand chan");
                 break;
             }
@@ -40,21 +43,22 @@ fn spawn_acceptor(
 }
 
 /// spawn a thread perform `Session.start`
-fn spawn_session<C, D, M>(mut session: Session<C, D, M>) -> thread::JoinHandle<Result<(), Error>>
+fn spawn_session<S, D, M>(mut session: Session<S, D, M>) -> thread::JoinHandle<Result<(), Error>>
 where
-    C: ByteStream + 'static,
+    S: ByteStream + 'static,
     D: Connector + 'static,
-    M: MethodSelector<C> + 'static,
+    M: MethodSelector + 'static,
 {
     thread::spawn(move || session.start())
 }
 
-impl<T, C> Server<T, C>
+impl<S, T, C> Server<S, T, C>
 where
-    T: Binder,
+    S: ByteStream + 'static,
+    T: Binder<Stream = S>,
     C: Connector + Clone + 'static,
 {
-    pub fn new(binder: T, connector: C) -> (Self, mpsc::SyncSender<ServerCommand>) {
+    pub fn new(binder: T, connector: C) -> (Self, mpsc::SyncSender<ServerCommand<S>>) {
         let (tx, rx) = mpsc::sync_channel(0);
         (
             Self {

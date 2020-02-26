@@ -124,6 +124,7 @@ impl From<crate::error::ErrorKind> for ConnectError {
             K::Io => CErr::ServerFailure,
             K::MessageFormat { .. } => CErr::ServerFailure,
             K::Authentication => CErr::ConnectionNotAllowed,
+            K::NoAcceptableMethod => CErr::ConnectionNotAllowed,
             K::UnrecognizedUsernamePassword => CErr::ConnectionNotAllowed,
             K::CommandNotSupported { .. } => CErr::CommandNotSupported,
             K::HostUnreachable { .. } => CErr::HostUnreachable,
@@ -150,4 +151,10 @@ pub struct ConnectReply {
     pub version: ProtocolVersion,
     pub connect_result: ConnectResult,
     pub server_addr: Address,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum L4Protocol {
+    Tcp,
+    Udp,
 }

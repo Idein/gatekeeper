@@ -3,8 +3,8 @@ use model::{Error, Method};
 use crate::auth_service::{AuthService, NoAuthService};
 use crate::byte_stream::ByteStream;
 
-pub trait MethodSelector<S: ByteStream>: Send {
-    type A: AuthService<S>;
+pub trait MethodSelector: Send {
+    type A: AuthService;
     /// decide auth method from candidates
     ///
     /// # Details
@@ -27,10 +27,7 @@ impl OnlyNoAuth {
     }
 }
 
-impl<S> MethodSelector<S> for OnlyNoAuth
-where
-    S: ByteStream,
-{
+impl MethodSelector for OnlyNoAuth {
     type A = NoAuthService;
 
     fn select(&self, candidates: &[Method]) -> Result<Option<(Method, Self::A)>, Error> {

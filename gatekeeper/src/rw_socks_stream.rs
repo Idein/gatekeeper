@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::fmt;
 use std::io;
 
 use log::*;
@@ -8,11 +9,11 @@ use crate::raw_message::{self as raw, *};
 
 /// Wrapper of Read/Write stream
 /// for impl SocksStream.
-pub struct ReadWriteStream<'a, T> {
+pub struct ReadWriteStreamRef<'a, T> {
     strm: &'a mut T,
 }
 
-impl<'a, T> ReadWriteStream<'a, T>
+impl<'a, T> ReadWriteStreamRef<'a, T>
 where
     T: io::Read + io::Write,
 {
@@ -100,7 +101,7 @@ where
     }
 }
 
-impl<'a, T> SocksStream for ReadWriteStream<'a, T>
+impl<'a, T> SocksStream for ReadWriteStreamRef<'a, T>
 where
     T: io::Read + io::Write,
 {
@@ -164,5 +165,51 @@ where
         buf.extend_from_slice(&connect_reply.bnd_port.to_be_bytes());
         self.strm.write_all(&buf)?;
         Ok(())
+    }
+}
+
+pub struct ReadWriteStream<T> {
+    strm: T,
+}
+
+impl<T: fmt::Debug> fmt::Debug for ReadWriteStream<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ReadWriteStream({:?})", self.strm)
+    }
+}
+
+impl<T> ReadWriteStream<T>
+where
+    T: io::Read + io::Write,
+{
+    pub fn new(strm: T) -> Self {
+        Self { strm }
+    }
+    pub fn into_inner(self) -> T {
+        self.strm
+    }
+    fn rw_stream(&mut self) -> ReadWriteStreamRef<T> {
+        ReadWriteStreamRef::new(&mut self.strm)
+    }
+}
+
+impl<T> SocksStream for ReadWriteStream<T>
+where
+    T: io::Read + io::Write,
+{
+    fn recv_method_candidates(&mut self) -> Result<model::MethodCandidates, Error> {
+        self.rw_stream().recv_method_candidates()
+    }
+    fn send_method_selection(
+        &mut self,
+        method_selection: model::MethodSelection,
+    ) -> Result<(), Error> {
+        self.rw_stream().send_method_selection(method_selection)
+    }
+    fn recv_connect_request(&mut self) -> Result<model::ConnectRequest, Error> {
+        self.rw_stream().recv_connect_request()
+    }
+    fn send_connect_reply(&mut self, connect_reply: model::ConnectReply) -> Result<(), Error> {
+        self.rw_stream().send_connect_reply(connect_reply)
     }
 }

@@ -80,6 +80,7 @@ impl From<model::Error> for Error {
             K::Io => err.context(ErrorKind::Io),
             K::MessageFormat { .. } => err.context(ErrorKind::Unknown),
             K::Authentication => err.context(ErrorKind::Auth),
+            K::NoAcceptableMethod => err.context(ErrorKind::NotSupported),
             K::UnrecognizedUsernamePassword => err.context(ErrorKind::Auth),
             K::CommandNotSupported { .. } => err.context(ErrorKind::NotSupported),
             K::HostUnreachable { .. } => err.context(ErrorKind::Io),

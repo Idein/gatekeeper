@@ -2,19 +2,32 @@ use std::fmt;
 use std::io;
 use std::net::TcpStream;
 
+use model::Error;
+
+use crate::try_clone::TryClone;
+
 /// read/write operations on byte stream
-pub trait ByteStream: fmt::Debug + io::Read + io::Write + Send {}
+pub trait ByteStream: fmt::Debug + io::Read + io::Write /*+ TryClone */ + Send {
+    fn split(&self) -> io::Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>)>;
+}
 
 /// byte stream on tcp connection
-impl ByteStream for TcpStream {}
+impl ByteStream for TcpStream {
+    fn split(&self) -> io::Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>)> {
+        let rd = self.try_clone()?;
+        let wr = self.try_clone()?;
+        Ok((Box::new(rd), Box::new(wr)))
+    }
+}
 
 /// Boxed stream
-impl<S: ByteStream> ByteStream for Box<S> {}
+impl<S: ByteStream> ByteStream for Box<S> {
+    fn split(&self) -> io::Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>)> {
+        self.split()
+    }
+}
 
-/// Boxed dynamic type stream
-pub type BoxedStream = Box<dyn ByteStream + 'static>;
-
-impl ByteStream for BoxedStream {}
+pub type BoxedStream = Box<dyn ByteStream>;
 
 pub enum EitherStream<T, U> {
     Left(T),
@@ -34,6 +47,7 @@ where
     }
 }
 
+/*
 impl<T, U> io::Read for EitherStream<T, U>
 where
     T: io::Read,
@@ -63,6 +77,19 @@ where
         match self {
             EitherStream::Left(s) => s.flush(),
             EitherStream::Right(s) => s.flush(),
+        }
+    }
+}
+
+impl<T, U> TryClone for EitherStream<T, U>
+where
+    T: ByteStream,
+    U: ByteStream,
+{
+    fn try_clone(&self) -> Result<Self, Error> {
+        match self {
+            EitherStream::Left(s) => s.try_clone(),
+            EitherStream::Right(s) => s.try_clone(),
         }
     }
 }
@@ -111,3 +138,4 @@ pub mod test {
 
     impl ByteStream for BufferStream {}
 }
+*/

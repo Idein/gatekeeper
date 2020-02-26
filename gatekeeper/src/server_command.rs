@@ -3,16 +3,16 @@
 use std::fmt;
 use std::net::SocketAddr;
 
-use crate::byte_stream::BoxedStream;
+use crate::byte_stream::ByteStream;
 
-pub enum ServerCommand {
+pub enum ServerCommand<T> {
     /// terminate
     Terminate,
     /// connected stream and client address
-    Connect(BoxedStream, SocketAddr),
+    Connect(T, SocketAddr),
 }
 
-impl fmt::Debug for ServerCommand {
+impl<T> fmt::Debug for ServerCommand<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use ServerCommand::*;
         match self {

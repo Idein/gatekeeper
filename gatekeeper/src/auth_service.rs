@@ -2,47 +2,50 @@ use std::fmt;
 
 use log::*;
 
-use crate::byte_stream::ByteStream;
+use crate::byte_stream::{BoxedStream, ByteStream};
+use crate::pkt_stream::PktStream;
 use crate::relay_connector::{EitherRelayConnector, RelayConnector, WrapRelayConnector};
 
-use model::{model::*, Error};
+use model::{dao::*, model::*, Error};
 
-/// type parameter `S` - type of input connection
-pub trait AuthService<S: ByteStream>: fmt::Debug {
-    type Relay: RelayConnector<Stream = S> + Send;
-    fn auth(&self, conn: S) -> Result<Self::Relay, Error>;
+pub trait AuthService: fmt::Debug {
+    /// input byte stream
+    // type Byte: ByteStream;
+    /// wrapped stream
+    // type Relay: RelayConnector;
+
+    /// authentication then return Wrapped stream
+    fn auth<B>(&self, conn: B) -> Result<BoxedStream, Error>
+    where
+        B: ByteStream + 'static;
 }
 
 #[derive(Debug)]
 pub struct NoAuthService;
 
-impl<S> AuthService<S> for NoAuthService
-where
-    S: ByteStream,
-{
-    type Relay = WrapRelayConnector<S>;
-    fn auth(&self, conn: S) -> Result<Self::Relay, Error> {
+impl AuthService for NoAuthService {
+    // type Relay = WrapRelayConnector<B>;
+    fn auth<B>(&self, conn: B) -> Result<BoxedStream, Error>
+    where
+        B: ByteStream + 'static,
+    {
         // pass through without any authentication
-        Ok(WrapRelayConnector::new(conn))
+        Ok(Box::new(conn))
     }
 }
 
-pub fn auth_with_selection<A, S>(
-    src_conn: S,
-    selection: Option<(Method, A)>,
-) -> Result<EitherRelayConnector<A::Relay, WrapRelayConnector<S>>, Error>
+/*
+pub fn auth_with_selection<A, B>(
+    src_conn: B,
+    selection: (Method, A),
+) -> Result<impl RelayConnector, Error>
 where
-    S: ByteStream,
-    A: AuthService<S>,
+    B: ByteStream,
+    A: AuthService,
 {
-    use EitherRelayConnector::*;
-    if let Some((method, service)) = selection {
-        info!("authentication: {}", method);
-        // authorize
-        service.auth(src_conn).map(LeftRelay)
-    } else {
-        info!("authentication is not necessary");
-        // take over original src connection
-        Ok(RightRelay(WrapRelayConnector::new(src_conn)))
-    }
+    let (method, service) = selection;
+    info!("authentication: {}", method);
+    // authorize
+    service.auth(src_conn).map(LeftRelay)
 }
+*/

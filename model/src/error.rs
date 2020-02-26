@@ -15,6 +15,8 @@ pub enum ErrorKind {
     MessageFormat { message: String },
     #[fail(display = "authentication error: general")]
     Authentication,
+    #[fail(display = "authentication error: no acceptable method")]
+    NoAcceptableMethod,
     #[fail(display = "authentication error: unrecognized username/password")]
     UnrecognizedUsernamePassword,
     #[fail(display = "command not supported: {:?}", cmd)]
