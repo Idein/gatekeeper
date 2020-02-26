@@ -4,6 +4,7 @@ mod byte_stream;
 mod connector;
 pub mod error;
 mod method_selector;
+mod pkt_stream;
 mod raw_message;
 mod relay_connector;
 mod rw_socks_stream;

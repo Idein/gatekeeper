@@ -128,6 +128,7 @@ impl From<crate::error::ErrorKind> for ConnectError {
             K::CommandNotSupported { .. } => CErr::CommandNotSupported,
             K::HostUnreachable { .. } => CErr::HostUnreachable,
             K::DomainNotResolved { .. } => CErr::NetworkUnreachable,
+            K::PacketSizeLimitExceeded { .. } => CErr::ServerFailure,
         }
     }
 }

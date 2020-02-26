@@ -23,6 +23,8 @@ pub enum ErrorKind {
     HostUnreachable { host: String, port: u16 },
     #[fail(display = "name not resolved: {}:{}", domain, port)]
     DomainNotResolved { domain: String, port: u16 },
+    #[fail(display = "packet size limit exceeded: {} > {}", size, limit)]
+    PacketSizeLimitExceeded { size: usize, limit: usize },
 }
 
 impl ErrorKind {
