@@ -3,12 +3,13 @@ use log::*;
 use crate::auth_service::*;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
-use crate::error::{self, Error};
+use crate::error::Error;
 use crate::method_selector::MethodSelector;
 use crate::relay_connector::RelayConnector;
 use crate::rw_socks_stream::ReadWriteStream;
 
 use model::dao::*;
+use model::error::ErrorKind;
 use model::model::*;
 
 pub struct Session<C, D, S> {
@@ -45,10 +46,13 @@ where
         }
     }
 
-    fn connect_reply(&self, connect_result: ConnectResult) -> ConnectReply {
+    fn connect_reply<R>(&self, connect_result: Result<(), R>) -> ConnectReply
+    where
+        ConnectError: From<R>,
+    {
         ConnectReply {
             version: self.version,
-            connect_result,
+            connect_result: connect_result.map_err(Into::into),
             server_addr: self.server_addr.clone().into(),
         }
     }
@@ -75,19 +79,33 @@ where
             (src_conn, selection)
         };
 
-        let _relay = match auth_with_selection(src_conn, selection) {
-            Ok(mut relay) => {
-                let mut strm = ReadWriteStream::new(relay.tcp_stream());
-                strm.send_connect_reply(self.connect_reply(Ok(())))?;
-                relay
+        let mut relay = auth_with_selection(src_conn, selection)?;
+
+        let mut strm = ReadWriteStream::new(relay.tcp_stream());
+        let conn_req = strm.recv_connect_request()?;
+        debug!("connect request: {:?}", conn_req);
+        match &conn_req.command {
+            Command::Connect => {}
+            cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
+                debug!("command not supported: {:?}", cmd);
+                let cmd_not_supported: model::Error = ErrorKind::command_not_supported(*cmd).into();
+                // reply error
+                let rep = self.connect_reply(Err(cmd_not_supported.kind().clone()));
+                strm.send_connect_reply(rep)?;
+                return Err(cmd_not_supported.into());
             }
-            Err(AuthServiceError { mut strm, error }) => {
-                info!("authentication error: {:?}", error);
-                let mut strm = ReadWriteStream::new(&mut strm);
-                strm.send_connect_reply(self.connect_reply(Err(error.into())))?;
-                return Err(error::ErrorKind::Auth.into());
+        }
+
+        match self.dst_connector.connect(conn_req.connect_to.clone()) {
+            Ok(_conn) => {}
+            Err(err) => {
+                error!("connect error: {:?}", err);
+                strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                return Err(err.into());
             }
-        };
+        }
+
+        strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
 
         unimplemented!("Session::start");
     }

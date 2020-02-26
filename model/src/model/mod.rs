@@ -63,7 +63,7 @@ pub struct MethodSelection {
     pub method: Method,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Command {
     Connect,
     Bind,
@@ -91,10 +91,7 @@ impl ToSocketAddrs for Address {
         use Address::*;
         match self {
             IpAddr(ipaddr, port) => Ok(vec![SocketAddr::new(*ipaddr, *port)].into_iter()),
-            Domain(domain, port) => {
-                let host = format!("{}:{}", domain, port);
-                Ok(host.to_socket_addrs()?)
-            }
+            Domain(domain, port) => Ok((domain.as_str(), *port).to_socket_addrs()?),
         }
     }
 }
@@ -119,15 +116,18 @@ pub enum ConnectError {
     AddrTypeNotSupported,
 }
 
-impl From<crate::error::Error> for ConnectError {
-    fn from(err: crate::error::Error) -> Self {
+impl From<crate::error::ErrorKind> for ConnectError {
+    fn from(err: crate::error::ErrorKind) -> Self {
         use crate::error::ErrorKind as K;
         use ConnectError as CErr;
-        match err.kind() {
+        match err {
             K::Io => CErr::ServerFailure,
             K::MessageFormat { .. } => CErr::ServerFailure,
             K::Authentication => CErr::ConnectionNotAllowed,
             K::UnrecognizedUsernamePassword => CErr::ConnectionNotAllowed,
+            K::CommandNotSupported { .. } => CErr::CommandNotSupported,
+            K::HostUnreachable { .. } => CErr::HostUnreachable,
+            K::DomainNotResolved { .. } => CErr::NetworkUnreachable,
         }
     }
 }

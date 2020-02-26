@@ -3,9 +3,11 @@ use std::fmt::Display;
 
 use failure::{Backtrace, Context, Fail};
 
+use crate::model::*;
+
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-#[derive(Fail, Debug)]
+#[derive(Fail, Debug, Clone)]
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
@@ -15,6 +17,12 @@ pub enum ErrorKind {
     Authentication,
     #[fail(display = "authentication error: unrecognized username/password")]
     UnrecognizedUsernamePassword,
+    #[fail(display = "command not supported: {:?}", cmd)]
+    CommandNotSupported { cmd: Command },
+    #[fail(display = "host unreachable: {}:{}", host, port)]
+    HostUnreachable { host: String, port: u16 },
+    #[fail(display = "name not resolved: {}:{}", domain, port)]
+    DomainNotResolved { domain: String, port: u16 },
 }
 
 impl ErrorKind {
@@ -22,6 +30,10 @@ impl ErrorKind {
         ErrorKind::MessageFormat {
             message: message.to_string(),
         }
+    }
+
+    pub fn command_not_supported(cmd: Command) -> Self {
+        ErrorKind::CommandNotSupported { cmd }
     }
 }
 

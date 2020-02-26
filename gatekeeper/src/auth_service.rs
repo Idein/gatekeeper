@@ -7,16 +7,10 @@ use crate::relay_connector::{EitherRelayConnector, RelayConnector, WrapRelayConn
 
 use model::{model::*, Error};
 
-#[derive(Debug)]
-pub struct AuthServiceError<S: ByteStream> {
-    pub strm: S,
-    pub error: Error,
-}
-
 /// type parameter `S` - type of input connection
 pub trait AuthService<S: ByteStream>: fmt::Debug {
     type Relay: RelayConnector<Stream = S> + Send;
-    fn auth(&self, conn: S) -> Result<Self::Relay, AuthServiceError<S>>;
+    fn auth(&self, conn: S) -> Result<Self::Relay, Error>;
 }
 
 #[derive(Debug)]
@@ -27,7 +21,7 @@ where
     S: ByteStream,
 {
     type Relay = WrapRelayConnector<S>;
-    fn auth(&self, conn: S) -> Result<Self::Relay, AuthServiceError<S>> {
+    fn auth(&self, conn: S) -> Result<Self::Relay, Error> {
         // pass through without any authentication
         Ok(WrapRelayConnector::new(conn))
     }
@@ -36,7 +30,7 @@ where
 pub fn auth_with_selection<A, S>(
     src_conn: S,
     selection: Option<(Method, A)>,
-) -> Result<EitherRelayConnector<A::Relay, WrapRelayConnector<S>>, AuthServiceError<S>>
+) -> Result<EitherRelayConnector<A::Relay, WrapRelayConnector<S>>, Error>
 where
     S: ByteStream,
     A: AuthService<S>,

@@ -12,6 +12,10 @@ pub enum ErrorKind {
     Io,
     #[fail(display = "auth error")]
     Auth,
+    #[fail(display = "permission error")]
+    Permission,
+    #[fail(display = "not supported error")]
+    NotSupported,
     #[fail(display = "unknown error")]
     Unknown,
 }
@@ -77,6 +81,9 @@ impl From<model::Error> for Error {
             K::MessageFormat { .. } => err.context(ErrorKind::Unknown),
             K::Authentication => err.context(ErrorKind::Auth),
             K::UnrecognizedUsernamePassword => err.context(ErrorKind::Auth),
+            K::CommandNotSupported { .. } => err.context(ErrorKind::NotSupported),
+            K::HostUnreachable { .. } => err.context(ErrorKind::Io),
+            K::DomainNotResolved { .. } => err.context(ErrorKind::Io),
         };
         Error { inner: ctx }
     }
