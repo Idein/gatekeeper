@@ -114,6 +114,8 @@ mod test {
     use super::*;
     use crate::acceptor::{Binder, TcpBinder};
     use crate::byte_stream::test::*;
+    use crate::config::*;
+    use crate::connector::*;
 
     use std::borrow::Cow;
     use std::net::*;
@@ -123,7 +125,9 @@ mod test {
 
     #[test]
     fn server_shutdown() {
-        let (server, tx) = Server::new(TcpBinder);
+        let config = ServerConfig::default();
+
+        let (server, tx) = Server::new(config, TcpBinder, TcpUdpConnector);
         let shutdown = Arc::new(Mutex::new(SystemTime::now()));
         let th = {
             let shutdown = shutdown.clone();
@@ -160,7 +164,7 @@ mod test {
             stream: BufferStream::new(Cow::from(b"dummy".to_vec())),
             src_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1080)),
         };
-        let (server, tx) = Server::new(binder);
+        let (server, tx) = Server::new(ServerConfig::default(), binder, TcpUdpConnector);
         let th = thread::spawn(move || {
             server.serve().ok();
         });

@@ -28,10 +28,12 @@ fn main() {
         server_port: opt.port,
     };
 
-    let (server, tx) = gk::server::Server::new(
+    let (server, _tx) = gk::server::Server::new(
         config,
         gk::acceptor::TcpBinder,
         gk::connector::TcpUdpConnector,
     );
-    server.serve();
+    if let Err(err) = server.serve() {
+        error!("server error: {:?}", err);
+    }
 }
