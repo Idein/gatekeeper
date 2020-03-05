@@ -17,7 +17,7 @@ pub trait Connector: Send {
 }
 
 #[derive(Debug, Clone)]
-pub struct TcpUdpConnector {}
+pub struct TcpUdpConnector;
 
 impl TcpUdpConnector {
     fn resolve(&self, addr: Address) -> Result<SocketAddr, Error> {

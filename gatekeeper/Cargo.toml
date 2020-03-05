@@ -4,7 +4,16 @@ version = "0.1.0"
 authors = ["eldesh <nephits@gmail.com>"]
 edition = "2018"
 
+[lib]
+name = "gatekeeper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gatekeeperd"
+path = "src/main.rs"
+
 [dependencies]
+structopt = "0.2"
 failure = "0.1.6"
 pretty_env_logger = "0.3.0"
 log = "0.4.6"

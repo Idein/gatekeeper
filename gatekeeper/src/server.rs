@@ -5,15 +5,17 @@ use log::*;
 
 use crate::acceptor::Binder;
 use crate::byte_stream::ByteStream;
+use crate::config::ServerConfig;
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::method_selector::{MethodSelector, OnlyNoAuth};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
 
-use model::{ProtocolVersion, SocketAddr};
+use model::{IpAddr, ProtocolVersion, SocketAddr};
 
 pub struct Server<S, T, C> {
+    config: ServerConfig,
     tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
     rx_cmd: mpsc::Receiver<ServerCommand<S>>,
     /// bind server address
@@ -58,10 +60,15 @@ where
     T: Binder<Stream = S>,
     C: Connector + Clone + 'static,
 {
-    pub fn new(binder: T, connector: C) -> (Self, mpsc::SyncSender<ServerCommand<S>>) {
+    pub fn new(
+        config: ServerConfig,
+        binder: T,
+        connector: C,
+    ) -> (Self, mpsc::SyncSender<ServerCommand<S>>) {
         let (tx, rx) = mpsc::sync_channel(0);
         (
             Self {
+                config,
                 tx_cmd: tx.clone(),
                 rx_cmd: rx,
                 binder,
@@ -73,7 +80,9 @@ where
     }
 
     pub fn serve(&self) -> Result<(), Error> {
-        let acceptor = self.binder.bind("127.0.0.1:1080")?;
+        let acceptor = self
+            .binder
+            .bind((self.config.server_address, self.config.server_port))?;
         spawn_acceptor(acceptor, self.tx_cmd.clone());
 
         while let Ok(cmd) = self.rx_cmd.recv() {
