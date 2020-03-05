@@ -3,15 +3,11 @@
 ///!
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
-use std::io;
-use std::net::ToSocketAddrs;
-pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use model;
 
 pub const RESERVED: u8 = 0x00;
-
-pub const SOCKS_VERSION: u8 = 0x05;
 
 /// Version of socks
 pub use model::ProtocolVersion;
@@ -227,96 +223,6 @@ impl From<model::Address> for Addr {
         match addr {
             model::Address::IpAddr(addr, _) => Addr::IpAddr(addr),
             model::Address::Domain(domain, _) => Addr::Domain(domain.as_bytes().to_vec()),
-        }
-    }
-}
-
-/// ATYP and (DST or BND)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Address<'a> {
-    r#type: AddrType,
-    data: &'a [u8],
-    port: u16,
-}
-
-impl<'a> Address<'a> {
-    pub fn new(r#type: AddrType, data: &'a [u8], port: u16) -> Self {
-        Address { r#type, data, port }
-    }
-}
-
-impl<'a> fmt::Display for Address<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use AddrType::*;
-        match self.r#type {
-            V6 => {
-                let addr: Vec<_> = self
-                    .data
-                    .chunks_exact(2)
-                    .map(|c| u16::from_ne_bytes([c[0], c[1]]))
-                    .collect();
-                let ipv6 = SocketAddrV6::new(
-                    Ipv6Addr::new(
-                        addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7],
-                    ),
-                    self.port,
-                    0,
-                    0,
-                );
-                write!(f, "{}", ipv6)
-            }
-            V4 => {
-                let ipv4 = SocketAddrV4::new(
-                    Ipv4Addr::new(self.data[0], self.data[1], self.data[2], self.data[3]),
-                    self.port,
-                );
-                write!(f, "{}", ipv4)
-            }
-            Domain => {
-                if let Ok(ss) = String::from_utf8(self.data.to_vec()) {
-                    write!(f, "{}:{}", ss, self.port)
-                } else {
-                    write!(f, "{:x?}:{}", self.data, self.port)
-                }
-            }
-        }
-    }
-}
-
-impl<'a> ToSocketAddrs for Address<'a> {
-    type Iter = std::vec::IntoIter<SocketAddr>;
-
-    /// Convert an address and AddrType to a SocketAddr
-    fn to_socket_addrs(&self) -> io::Result<Self::Iter> {
-        match self.r#type {
-            AddrType::V6 => {
-                let addr: Vec<_> = self
-                    .data
-                    .chunks_exact(2)
-                    .map(|c| u16::from_ne_bytes([c[0], c[1]]))
-                    .collect();
-
-                Ok(vec![SocketAddrV6::new(
-                    Ipv6Addr::new(
-                        addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7],
-                    ),
-                    self.port,
-                    0,
-                    0,
-                )
-                .into()]
-                .into_iter())
-            }
-            AddrType::V4 => Ok(vec![SocketAddrV4::new(
-                Ipv4Addr::new(self.data[0], self.data[1], self.data[2], self.data[3]),
-                self.port,
-            )
-            .into()]
-            .into_iter()),
-            AddrType::Domain => {
-                let host = format!("{}:{}", String::from_utf8_lossy(&self.data[..]), self.port);
-                Ok(host.to_socket_addrs()?)
-            }
         }
     }
 }

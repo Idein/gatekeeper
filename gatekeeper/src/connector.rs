@@ -1,4 +1,4 @@
-use std::net::{TcpStream, ToSocketAddrs, UdpSocket};
+use std::net::{TcpStream, ToSocketAddrs};
 
 use failure::ResultExt;
 use log::*;
@@ -42,7 +42,7 @@ impl Connector for TcpUdpConnector {
         let sock_addr = self.resolve(addr)?;
         TcpStream::connect(sock_addr).map_err(Into::into)
     }
-    fn connect_pkt_stream(&self, addr: Address) -> Result<Self::P, Error> {
+    fn connect_pkt_stream(&self, _addr: Address) -> Result<Self::P, Error> {
         unimplemented!("connect_pkt_stream")
         /*
         let sock_addr = self.resolve(addr)?;

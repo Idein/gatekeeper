@@ -12,7 +12,7 @@ use crate::method_selector::{MethodSelector, OnlyNoAuth};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
 
-use model::{IpAddr, ProtocolVersion, SocketAddr};
+use model::{ProtocolVersion, SocketAddr};
 
 pub struct Server<S, T, C> {
     config: ServerConfig,

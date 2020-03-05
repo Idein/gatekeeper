@@ -3,8 +3,6 @@
 use std::fmt;
 use std::net::SocketAddr;
 
-use crate::byte_stream::ByteStream;
-
 pub enum ServerCommand<T> {
     /// terminate
     Terminate,

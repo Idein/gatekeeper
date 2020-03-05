@@ -8,7 +8,6 @@ use crate::byte_stream::{BoxedStream, ByteStream};
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::method_selector::MethodSelector;
-use crate::relay_connector::RelayConnector;
 use crate::rw_socks_stream::ReadWriteStream;
 
 use model::dao::*;
@@ -127,7 +126,7 @@ where
             }
         };
 
-        let mut relay = method.auth(src_conn)?;
+        let relay = method.auth(src_conn)?;
 
         let mut strm = ReadWriteStream::new(relay);
         let conn_req = strm.recv_connect_request()?;
@@ -159,7 +158,7 @@ where
             }
         };
 
-        spawn_relay(strm.into_inner(), dst_conn);
+        spawn_relay(strm.into_inner(), dst_conn)?;
         Ok(())
     }
 }

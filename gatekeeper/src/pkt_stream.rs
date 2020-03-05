@@ -9,20 +9,6 @@ pub trait PktStream {
     fn send_pkt(&self, pkt: &[u8]) -> Result<(), Error>;
 }
 
-pub struct DummyPktStream;
-
-impl PktStream for DummyPktStream {
-    fn pkt_size(&self) -> usize {
-        unimplemented!("DummyPktStream::pkt_size")
-    }
-    fn recv_pkt(&mut self) -> Result<&[u8], Error> {
-        unimplemented!("DummyPktStream::recv_pkt")
-    }
-    fn send_pkt(&self, pkt: &[u8]) -> Result<(), Error> {
-        unimplemented!("DummyPktStream::send_pkt")
-    }
-}
-
 pub struct UdpPktStream {
     pkt_size: usize,
     socket: net::UdpSocket,

@@ -1,7 +1,6 @@
 use model::{Error, Method};
 
 use crate::auth_service::{AuthService, NoAuthService};
-use crate::byte_stream::ByteStream;
 
 pub trait MethodSelector: Send {
     type A: AuthService;
