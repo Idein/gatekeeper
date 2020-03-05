@@ -117,7 +117,11 @@ where
                     (src_conn, auth)
                 }
                 None => {
-                    // TODO: send error
+                    // no acceptable method
+                    strm.send_method_selection(MethodSelection {
+                        version: self.version,
+                        method: Method::NoMethods,
+                    })?;
                     return Err(model::Error::from(ErrorKind::NoAcceptableMethod).into());
                 }
             }
