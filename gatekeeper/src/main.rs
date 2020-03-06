@@ -14,6 +14,9 @@ struct Opt {
     #[structopt(short = "i", long = "ip", default_value = "127.0.0.1")]
     /// Set ipaddress to listen on
     ipaddr: IpAddr,
+
+    #[structopt(long = "packet_size", default_value = "4096")]
+    udp_pkt_size: usize,
 }
 
 fn main() {
@@ -26,12 +29,13 @@ fn main() {
     let config = gk::config::ServerConfig {
         server_ip: opt.ipaddr,
         server_port: opt.port,
+        udp_pkt_size: opt.udp_pkt_size,
     };
 
     let (server, _tx) = gk::server::Server::new(
-        config,
+        config.clone(),
         gk::acceptor::TcpBinder,
-        gk::connector::TcpUdpConnector,
+        gk::connector::TcpUdpConnector::new(config.server_addr(), config.udp_pkt_size),
     );
     if let Err(err) = server.serve() {
         error!("server error: {:?}", err);

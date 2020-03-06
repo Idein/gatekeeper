@@ -133,7 +133,11 @@ where
         debug!("connect request: {:?}", conn_req);
         match &conn_req.command {
             Command::Connect => {}
-            cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
+            cmd @ Command::UdpAssociate => {
+                // UDP ASSOCIATE
+                // UDP接続をTCP接続へ関連付け
+            }
+            cmd @ Command::Bind => {
                 debug!("command not supported: {:?}", cmd);
                 let not_supported: model::Error = ErrorKind::command_not_supported(*cmd).into();
                 // reply error

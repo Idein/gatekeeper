@@ -1,12 +1,11 @@
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{TcpStream, UdpSocket};
 
-use failure::ResultExt;
 use log::*;
 
 use crate::byte_stream::ByteStream;
 use crate::pkt_stream::{PktStream, UdpPktStream};
 
-use model::error::{Error, ErrorKind};
+use model::error::Error;
 use model::model::*;
 
 pub trait Connector: Send {
@@ -16,22 +15,18 @@ pub trait Connector: Send {
     fn connect_pkt_stream(&self, addr: Address) -> Result<Self::P, Error>;
 }
 
-#[derive(Debug, Clone)]
-pub struct TcpUdpConnector;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TcpUdpConnector {
+    local_addr: SocketAddr,
+    udp_pkt_size: usize,
+}
 
 impl TcpUdpConnector {
-    fn resolve(&self, addr: Address) -> Result<SocketAddr, Error> {
-        let sock_addr = match addr {
-            Address::IpAddr(addr, port) => SocketAddr::new(addr, port),
-            Address::Domain(host, port) => {
-                let mut iter = (host.as_str(), port)
-                    .to_socket_addrs()
-                    .context(ErrorKind::DomainNotResolved { domain: host, port }.into())?;
-                iter.next().unwrap()
-            }
-        };
-        trace!("resolved: {}", sock_addr);
-        Ok(sock_addr)
+    pub fn new(local_addr: SocketAddr, udp_pkt_size: usize) -> Self {
+        Self {
+            local_addr,
+            udp_pkt_size,
+        }
     }
 }
 
@@ -39,14 +34,13 @@ impl Connector for TcpUdpConnector {
     type B = TcpStream;
     type P = UdpPktStream;
     fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
-        let sock_addr = self.resolve(addr)?;
-        TcpStream::connect(sock_addr).map_err(Into::into)
+        trace!("TcpUdpConnector::connect_byte_stream");
+        TcpStream::connect(addr).map_err(Into::into)
     }
-    fn connect_pkt_stream(&self, _addr: Address) -> Result<Self::P, Error> {
-        unimplemented!("connect_pkt_stream")
-        /*
-        let sock_addr = self.resolve(addr)?;
-        UdpSocket::connect(sock_addr).map_err(Into::into)
-        */
+    fn connect_pkt_stream(&self, addr: Address) -> Result<Self::P, Error> {
+        trace!("TcpUdpConnector::connect_pkt_stream");
+        let socket = UdpSocket::bind(self.local_addr)?;
+        socket.connect(addr)?;
+        Ok(UdpPktStream::new(self.udp_pkt_size, socket))
     }
 }

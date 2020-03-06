@@ -4,6 +4,7 @@ use model::{IpAddr, Ipv4Addr, SocketAddr};
 pub struct ServerConfig {
     pub server_ip: IpAddr,
     pub server_port: u16,
+    pub udp_pkt_size: usize,
 }
 
 impl Default for ServerConfig {
@@ -11,6 +12,7 @@ impl Default for ServerConfig {
         ServerConfig {
             server_ip: Ipv4Addr::new(127, 0, 0, 1).into(),
             server_port: 1080,
+            udp_pkt_size: 4096,
         }
     }
 }
