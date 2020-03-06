@@ -162,7 +162,6 @@ where
             }
             // UDP接続をTCP接続へ関連付け
             Command::UdpAssociate => {
-                unimplemented!("UDP ASSOCIATED");
                 let dst_conn = match self
                     .dst_connector
                     .connect_pkt_stream(conn_req.connect_to.clone())

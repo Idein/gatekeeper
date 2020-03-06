@@ -1,4 +1,4 @@
-use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
 
 use log::*;
 
@@ -6,13 +6,14 @@ use crate::byte_stream::ByteStream;
 use crate::error::Error;
 
 pub struct TcpAcceptor {
-    listener: TcpListener,
+    tcp_listener: TcpListener,
+    udp_socket: UdpSocket,
 }
 
 impl Iterator for TcpAcceptor {
     type Item = (TcpStream, SocketAddr);
     fn next(&mut self) -> Option<Self::Item> {
-        match self.listener.accept() {
+        match self.tcp_listener.accept() {
             Ok(x) => Some(x),
             Err(err) => {
                 error!("accept error: {}", err);
@@ -26,17 +27,20 @@ impl Iterator for TcpAcceptor {
 pub trait Binder {
     type Stream: ByteStream + 'static;
     type Iter: Iterator<Item = (Self::Stream, SocketAddr)> + Send + 'static;
-    fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<Self::Iter, Error>;
+    fn bind<A: ToSocketAddrs + Clone>(&self, addr: A) -> Result<Self::Iter, Error>;
 }
 
-pub struct TcpBinder;
+pub struct TcpUdpBinder;
 
-impl Binder for TcpBinder {
+impl Binder for TcpUdpBinder {
     type Stream = TcpStream;
     type Iter = TcpAcceptor;
-    fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<Self::Iter, Error> {
+    fn bind<A: ToSocketAddrs + Clone>(&self, addr: A) -> Result<Self::Iter, Error> {
+        let tcp_listener = TcpListener::bind(addr.clone())?;
+        let udp_socket = UdpSocket::bind(addr)?;
         Ok(TcpAcceptor {
-            listener: TcpListener::bind(addr)?,
+            tcp_listener,
+            udp_socket,
         })
     }
 }

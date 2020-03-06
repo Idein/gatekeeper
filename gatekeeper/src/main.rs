@@ -34,7 +34,7 @@ fn main() {
 
     let (server, _tx) = gk::server::Server::new(
         config.clone(),
-        gk::acceptor::TcpBinder,
+        gk::acceptor::TcpUdpBinder,
         gk::connector::TcpUdpConnector::new(config.server_addr(), config.udp_pkt_size),
     );
     if let Err(err) = server.serve() {
