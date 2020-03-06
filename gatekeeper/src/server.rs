@@ -31,7 +31,7 @@ fn spawn_acceptor<S>(
     tx: SyncSender<ServerCommand<S>>,
 ) -> thread::JoinHandle<()>
 where
-    S: ByteStream + 'static + Send,
+    S: ByteStream + 'static,
 {
     use ServerCommand::*;
     thread::spawn(move || {
