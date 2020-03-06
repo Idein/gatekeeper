@@ -1,4 +1,5 @@
 use std::io;
+use std::net::ToSocketAddrs;
 use std::thread::{self, JoinHandle};
 
 use log::*;
@@ -9,7 +10,7 @@ use crate::connector::Connector;
 use crate::error::Error;
 use crate::method_selector::MethodSelector;
 use crate::pkt_stream::PktStream;
-use crate::rw_socks_stream::ReadWriteStream;
+use crate::rw_socks_stream::{read_datagram, ReadWriteStream};
 
 use model::dao::*;
 use model::error::ErrorKind;
@@ -63,14 +64,36 @@ where
     ))
 }
 
-fn spawn_udp_relay<R>(
-    client_conn: BoxedStream,
-    server_conn: R,
-) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error>
-where
-    R: PktStream,
-{
-    unimplemented!("spawn_udp_relay")
+///
+/// - `client_addr`
+///   IP address of the client that will send datagrams to the BND.PORT
+fn spawn_udp_relay(
+    socks_conn: impl SocksStream + Send + 'static,
+    relay: std::net::UdpSocket,
+    client_addr: SocketAddr,
+    server_addr: SocketAddr,
+) -> Result<JoinHandle<()>, model::Error> {
+    info!("spawn_udp_relay");
+    Ok(thread::spawn(move || {
+        let _socks_conn = socks_conn;
+        let mut buf = [0; 4096];
+        loop {
+            let (size, addr) = relay.recv_from(&mut buf).unwrap();
+            if addr == client_addr {
+                debug!("client: {} -> {}", client_addr, server_addr);
+                let datagram = read_datagram(&buf[..size]).unwrap();
+                debug!("datagram: {:?}", datagram);
+                relay.send_to(datagram.data, server_addr).unwrap();
+            } else if addr == server_addr {
+                debug!("server: {} -> {}", server_addr, client_addr);
+                relay.send_to(&buf[..size], client_addr).unwrap();
+            } else {
+                // > It MUST drop any datagrams arriving from any source IP address
+                // > other than the one recorded for the particular association.
+                warn!("unknown src packet is comming (discarded): {:?}", addr);
+            }
+        }
+    }))
 }
 
 impl<C, D, S> Session<C, D, S>
@@ -162,21 +185,15 @@ where
             }
             // UDP接続をTCP接続へ関連付け
             Command::UdpAssociate => {
-                let dst_conn = match self
-                    .dst_connector
-                    .connect_pkt_stream(conn_req.connect_to.clone())
-                {
-                    Ok(conn) => {
-                        strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
-                        conn
-                    }
-                    Err(err) => {
-                        error!("connect error: {:?}", err);
-                        strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
-                        return Err(err.into());
-                    }
-                };
-                spawn_udp_relay(strm.into_inner(), dst_conn)?;
+                let udp_relay = std::net::UdpSocket::bind(self.server_addr.clone())?;
+                strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
+                let server_addr = conn_req.connect_to.clone();
+                spawn_udp_relay(
+                    strm,
+                    udp_relay,
+                    self.src_addr.clone(),
+                    server_addr.to_socket_addrs()?.next().unwrap(),
+                )?;
             }
             // サーバからクライアントへの接続を中継
             cmd @ Command::Bind => {
