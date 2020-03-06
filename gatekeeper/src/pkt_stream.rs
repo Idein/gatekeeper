@@ -1,12 +1,12 @@
 use std::io;
-use std::net;
+use std::net::{self, SocketAddr};
 
 use model::{Error, ErrorKind};
 
 pub trait PktStream {
     fn pkt_size(&self) -> usize;
-    fn recv_pkt(&mut self) -> Result<&[u8], Error>;
-    fn send_pkt(&self, pkt: &[u8]) -> Result<(), Error>;
+    fn recv_pkt(&mut self) -> Result<(&[u8], SocketAddr), Error>;
+    fn send_pkt(&self, pkt: &[u8], addr: SocketAddr) -> Result<(), Error>;
 }
 
 pub struct UdpPktStream {
@@ -30,12 +30,12 @@ impl PktStream for UdpPktStream {
         self.pkt_size
     }
 
-    fn recv_pkt(&mut self) -> Result<&[u8], Error> {
-        self.socket.recv(&mut self.buf)?;
-        Ok(&self.buf)
+    fn recv_pkt(&mut self) -> Result<(&[u8], SocketAddr), Error> {
+        let (len, addr) = self.socket.recv_from(&mut self.buf)?;
+        Ok((&self.buf[..len], addr))
     }
 
-    fn send_pkt(&self, pkt: &[u8]) -> Result<(), Error> {
+    fn send_pkt(&self, pkt: &[u8], addr: SocketAddr) -> Result<(), Error> {
         if pkt.len() > self.pkt_size {
             return Err(ErrorKind::PacketSizeLimitExceeded {
                 size: pkt.len(),
@@ -44,7 +44,7 @@ impl PktStream for UdpPktStream {
             .into());
         }
         self.socket
-            .send(pkt)
+            .send_to(pkt, addr)
             .and_then(|size| {
                 if size == pkt.len() {
                     Ok(())
