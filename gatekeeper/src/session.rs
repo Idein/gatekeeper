@@ -8,6 +8,7 @@ use crate::byte_stream::{BoxedStream, ByteStream};
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::method_selector::MethodSelector;
+use crate::pkt_stream::PktStream;
 use crate::rw_socks_stream::ReadWriteStream;
 
 use model::dao::*;
@@ -60,6 +61,16 @@ where
         spawn_relay_half("relay: outbound", read_client, write_server)?,
         spawn_relay_half("relay: incoming", read_server, write_client)?,
     ))
+}
+
+fn spawn_udp_relay<R>(
+    client_conn: BoxedStream,
+    server_conn: R,
+) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error>
+where
+    R: PktStream,
+{
+    unimplemented!("spawn_udp_relay")
 }
 
 impl<C, D, S> Session<C, D, S>
@@ -132,11 +143,43 @@ where
         let conn_req = strm.recv_connect_request()?;
         debug!("connect request: {:?}", conn_req);
         match &conn_req.command {
-            Command::Connect => {}
-            cmd @ Command::UdpAssociate => {
-                // UDP ASSOCIATE
-                // UDP接続をTCP接続へ関連付け
+            Command::Connect => {
+                let dst_conn = match self
+                    .dst_connector
+                    .connect_byte_stream(conn_req.connect_to.clone())
+                {
+                    Ok(conn) => {
+                        strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
+                        conn
+                    }
+                    Err(err) => {
+                        error!("connect error: {:?}", err);
+                        strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                        return Err(err.into());
+                    }
+                };
+                spawn_relay(strm.into_inner(), dst_conn)?;
             }
+            // UDP接続をTCP接続へ関連付け
+            Command::UdpAssociate => {
+                unimplemented!("UDP ASSOCIATED");
+                let dst_conn = match self
+                    .dst_connector
+                    .connect_pkt_stream(conn_req.connect_to.clone())
+                {
+                    Ok(conn) => {
+                        strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
+                        conn
+                    }
+                    Err(err) => {
+                        error!("connect error: {:?}", err);
+                        strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                        return Err(err.into());
+                    }
+                };
+                spawn_udp_relay(strm.into_inner(), dst_conn)?;
+            }
+            // サーバからクライアントへの接続を中継
             cmd @ Command::Bind => {
                 debug!("command not supported: {:?}", cmd);
                 let not_supported: model::Error = ErrorKind::command_not_supported(*cmd).into();
@@ -147,22 +190,6 @@ where
             }
         }
 
-        let dst_conn = match self
-            .dst_connector
-            .connect_byte_stream(conn_req.connect_to.clone())
-        {
-            Ok(conn) => {
-                strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
-                conn
-            }
-            Err(err) => {
-                error!("connect error: {:?}", err);
-                strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
-                return Err(err.into());
-            }
-        };
-
-        spawn_relay(strm.into_inner(), dst_conn)?;
         Ok(())
     }
 }
