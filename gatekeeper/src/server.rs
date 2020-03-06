@@ -80,9 +80,7 @@ where
     }
 
     pub fn serve(&self) -> Result<(), Error> {
-        let acceptor = self
-            .binder
-            .bind((self.config.server_address, self.config.server_port))?;
+        let acceptor = self.binder.bind(self.config.server_addr())?;
         spawn_acceptor(acceptor, self.tx_cmd.clone());
 
         while let Ok(cmd) = self.rx_cmd.recv() {
@@ -98,7 +96,7 @@ where
                         addr,
                         self.connector.clone(),
                         OnlyNoAuth::new(),
-                        SocketAddr::from(([127, 0, 0, 1], 1080)).into(),
+                        self.config.server_addr(),
                     );
                     spawn_session(session);
                 }

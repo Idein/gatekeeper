@@ -24,7 +24,7 @@ fn main() {
     debug!("option: {:?}", opt);
 
     let config = gk::config::ServerConfig {
-        server_address: opt.ipaddr,
+        server_ip: opt.ipaddr,
         server_port: opt.port,
     };
 
