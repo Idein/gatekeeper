@@ -304,14 +304,14 @@ pub struct ConnectRequest {
 
 /// aux for impl TryFrom to model::Address
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AddrTriple {
+pub struct AddrTriple {
     atyp: AddrType,
     addr: Addr,
     port: u16,
 }
 
 impl AddrTriple {
-    fn new(atyp: AddrType, addr: Addr, port: u16) -> Self {
+    pub fn new(atyp: AddrType, addr: Addr, port: u16) -> Self {
         Self { atyp, addr, port }
     }
 }
@@ -361,6 +361,12 @@ impl std::error::Error for TryFromAddress {
     }
 }
 
+impl From<TryFromAddress> for model::Error {
+    fn from(err: TryFromAddress) -> Self {
+        model::ErrorKind::message_fmt(format_args!("{}", err)).into()
+    }
+}
+
 impl TryFrom<ConnectRequest> for model::ConnectRequest {
     type Error = TryFromAddress;
     fn try_from(req: ConnectRequest) -> Result<Self, Self::Error> {
@@ -407,12 +413,11 @@ impl From<model::ConnectReply> for ConnectReply {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct UdpDatagram<'a> {
+pub struct UdpHeader {
     pub rsv: u16,
     /// fragment number
     pub frag: u8,
     pub atyp: AddrType,
     pub dst_addr: Addr,
     pub dst_port: u16,
-    pub data: &'a [u8],
 }
