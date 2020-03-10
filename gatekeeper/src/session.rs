@@ -1,6 +1,7 @@
 use std::collections::HashSet;
-use std::io;
+use std::io::{self, Write};
 use std::net::ToSocketAddrs;
+use std::os::unix::io::AsRawFd;
 use std::thread::{self, JoinHandle};
 
 use log::*;
@@ -11,7 +12,8 @@ use crate::connector::Connector;
 use crate::error::Error;
 use crate::method_selector::MethodSelector;
 use crate::pkt_stream::PktStream;
-use crate::rw_socks_stream::{read_datagram, ReadWriteStream};
+use crate::raw_message::{AddrType, UdpHeader};
+use crate::rw_socks_stream::{read_datagram, ReadWriteStream, WriteSocksExt};
 
 use model::dao::*;
 use model::error::ErrorKind;
@@ -88,7 +90,27 @@ fn spawn_udp_relay(
 
             if let Some(_) = dst_set.get(&addr) {
                 debug!("server: {} -> {}", addr, client_addr);
-                relay.send_to(&buf[..size], client_addr).unwrap();
+                let mut udp_buf = [0; 4096];
+                let pos = {
+                    let mut cur = io::Cursor::new(&mut udp_buf[..]);
+                    cur.write_udp(&UdpHeader {
+                        rsv: 0,
+                        frag: 0,
+                        atyp: if addr.ip().is_ipv4() {
+                            AddrType::V4
+                        } else {
+                            AddrType::V6
+                        },
+                        dst_addr: addr.ip().into(),
+                        dst_port: addr.port(),
+                    })
+                    .unwrap();
+                    cur.write_all(&buf[0..size]).unwrap();
+                    cur.position()
+                };
+                relay
+                    .send_to(&udp_buf[..pos as usize], client_addr)
+                    .unwrap();
             } else if addr.ip() == client_addr.ip() {
                 debug!("client: {} -> {}", client_addr, server_addr);
                 let datagram = read_datagram(&buf[..size]).unwrap();
@@ -101,8 +123,9 @@ fn spawn_udp_relay(
                 addrs.iter().for_each(|addr| {
                     dst_set.insert(addr.clone());
                 });
-                println!("addrs: {:?}", addrs);
+                debug!("addrs: {:?}", addrs);
                 relay.send_to(datagram.data, &addrs[..]).unwrap();
+                debug!("send_to: {:?}", datagram.dst_addr);
             } /*
                    else {
                   // if addr == server_addr {
@@ -209,7 +232,9 @@ where
             // UDP接続をTCP接続へ関連付け
             Command::UdpAssociate => {
                 trace!("UdpAssociate");
-                let udp_relay = std::net::UdpSocket::bind(self.server_addr.clone())?;
+                let udp_relay = net2::UdpBuilder::new_v4()?
+                    .reuse_address(true)?
+                    .bind(self.server_addr.clone())?;
                 trace!("bind: {:?}", self.server_addr.clone());
                 strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
                 trace!(

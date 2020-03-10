@@ -51,7 +51,11 @@ where
     D: Connector + 'static,
     M: MethodSelector + 'static,
 {
-    thread::spawn(move || session.start())
+    thread::spawn(move || {
+        let res = session.start();
+        debug!("session.start(): {:?}", res);
+        res
+    })
 }
 
 impl<S, T, C> Server<S, T, C>
