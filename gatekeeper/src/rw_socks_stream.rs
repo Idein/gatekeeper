@@ -17,20 +17,20 @@ impl<'a, T> ReadWriteStreamRef<'a, T> {
     pub fn new(strm: &'a mut T) -> Self {
         Self { strm }
     }
+}
 
-    fn write_addr(&self, buf: &mut Vec<u8>, atyp: AddrType, addr: Addr) -> Result<(), Error> {
-        use AddrType::*;
-        match (atyp, addr) {
-            (V4, Addr::IpAddr(IpAddr::V4(addr))) => buf.extend_from_slice(&addr.octets()),
-            (V6, Addr::IpAddr(IpAddr::V6(addr))) => buf.extend_from_slice(&addr.octets()),
-            (Domain, Addr::Domain(domain)) => buf.extend_from_slice(&domain),
-            other => Err(ErrorKind::message_fmt(format_args!(
-                "Invalid Address: {:?}",
-                other
-            )))?,
-        }
-        Ok(())
+fn write_addr(buf: &mut [u8], atyp: AddrType, addr: Addr) -> Result<(), Error> {
+    use AddrType::*;
+    match (atyp, addr) {
+        (V4, Addr::IpAddr(IpAddr::V4(addr))) => buf.clone_from_slice(&addr.octets()),
+        (V6, Addr::IpAddr(IpAddr::V6(addr))) => buf.clone_from_slice(&addr.octets()),
+        (Domain, Addr::Domain(domain)) => buf.clone_from_slice(&domain),
+        other => Err(ErrorKind::message_fmt(format_args!(
+            "Invalid Address: {:?}",
+            other
+        )))?,
     }
+    Ok(())
 }
 
 pub trait ReadSocksExt {
@@ -200,7 +200,7 @@ where
         buf.push(connect_reply.rep.code());
         buf.push(connect_reply.rsv.into());
         buf.push(connect_reply.atyp as u8);
-        self.write_addr(&mut buf, connect_reply.atyp, connect_reply.bnd_addr)?;
+        write_addr(&mut buf, connect_reply.atyp, connect_reply.bnd_addr)?;
         buf.extend_from_slice(&connect_reply.bnd_port.to_be_bytes());
         self.strm.write_all(&buf)?;
         Ok(())
