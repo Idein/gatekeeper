@@ -158,3 +158,10 @@ pub enum L4Protocol {
     Tcp,
     Udp,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UdpDatagram<'a> {
+    pub frag: u8,
+    pub dst_addr: Address,
+    pub data: &'a [u8],
+}

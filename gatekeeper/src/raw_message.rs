@@ -405,3 +405,14 @@ impl From<model::ConnectReply> for ConnectReply {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UdpDatagram<'a> {
+    pub rsv: u16,
+    /// fragment number
+    pub frag: u8,
+    pub atyp: AddrType,
+    pub dst_addr: Addr,
+    pub dst_port: u16,
+    pub data: &'a [u8],
+}
