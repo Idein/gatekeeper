@@ -37,7 +37,7 @@ pub trait ReadSocksExt {
     fn read_u8(&mut self) -> Result<u8, Error>;
     fn read_u16(&mut self) -> Result<u16, Error>;
     fn read_rsv(&mut self) -> Result<u8, Error>;
-    fn read_protocol_version(&mut self) -> Result<ProtocolVersion, Error>;
+    fn read_version(&mut self) -> Result<ProtocolVersion, Error>;
     fn read_methods(&mut self, nmethod: usize) -> Result<Vec<AuthMethods>, Error>;
     fn read_cmd(&mut self) -> Result<SockCommand, Error>;
     fn read_atyp(&mut self) -> Result<AddrType, Error>;
@@ -70,7 +70,7 @@ where
         }
     }
 
-    fn read_protocol_version(&mut self) -> Result<ProtocolVersion, Error> {
+    fn read_version(&mut self) -> Result<ProtocolVersion, Error> {
         let version = self.read_u8()?.into();
         Ok(version)
     }
@@ -153,7 +153,7 @@ where
 {
     fn recv_method_candidates(&mut self) -> Result<model::MethodCandidates, Error> {
         trace!("recv_method_candidates");
-        let ver = self.strm.read_protocol_version()?;
+        let ver = self.strm.read_version()?;
         let nmethods = self.strm.read_u8()?;
         let methods = self.strm.read_methods(nmethods as usize)?;
         Ok(raw::MethodCandidates { ver, methods }.into())
@@ -174,7 +174,7 @@ where
 
     fn recv_connect_request(&mut self) -> Result<model::ConnectRequest, Error> {
         trace!("recv_connect_request");
-        let ver = self.strm.read_protocol_version()?;
+        let ver = self.strm.read_version()?;
         let cmd = self.strm.read_cmd()?;
         let rsv = self.strm.read_rsv()?;
         let atyp = self.strm.read_atyp()?;
