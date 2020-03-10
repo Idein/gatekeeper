@@ -20,16 +20,12 @@ impl<'a, T> ReadWriteStreamRef<'a, T> {
     }
 }
 
-fn write_addr(buf: &mut [u8], atyp: AddrType, addr: &Addr) -> Result<(), Error> {
+fn write_addr(buf: &mut [u8], addr: &Addr) -> Result<(), Error> {
     use AddrType::*;
-    match (atyp, addr) {
-        (V4, Addr::IpAddr(IpAddr::V4(addr))) => buf.clone_from_slice(&addr.octets()),
-        (V6, Addr::IpAddr(IpAddr::V6(addr))) => buf.clone_from_slice(&addr.octets()),
-        (Domain, Addr::Domain(domain)) => buf.clone_from_slice(&domain),
-        other => Err(ErrorKind::message_fmt(format_args!(
-            "Invalid Address: {:?}",
-            other
-        )))?,
+    match addr {
+        Addr::IpAddr(IpAddr::V4(addr)) => buf.clone_from_slice(&addr.octets()),
+        Addr::IpAddr(IpAddr::V6(addr)) => buf.clone_from_slice(&addr.octets()),
+        Addr::Domain(domain) => buf.clone_from_slice(&domain),
     }
     Ok(())
 }
@@ -46,8 +42,15 @@ trait ReadSocksExt {
     fn read_udp(&mut self) -> Result<UdpHeader, Error>;
 }
 
-trait WriteSocksExt {
-    fn write_udp(&mut self, header: &UdpHeader, data: &[u8]) -> Result<(), Error>;
+// TODO: private
+pub trait WriteSocksExt {
+    fn write_u8(&mut self, v: u8) -> Result<(), Error>;
+    fn write_u16(&mut self, v: u16) -> Result<(), Error>;
+    fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error>;
+    fn write_addr(&mut self, addr: &Addr) -> Result<(), Error>;
+    fn write_version(&mut self, version: ProtocolVersion) -> Result<(), Error>;
+    fn write_rep(&mut self, rep: ResponseCode) -> Result<(), Error>;
+    fn write_udp(&mut self, header: &UdpHeader) -> Result<(), Error>;
 }
 
 impl<T> ReadSocksExt for T
@@ -156,15 +159,41 @@ impl<T> WriteSocksExt for T
 where
     T: io::Write,
 {
-    fn write_udp(&mut self, header: &UdpHeader, data: &[u8]) -> Result<(), Error> {
-        self.write_all(&header.rsv.to_be_bytes())?;
-        self.write_all(slice::from_ref(&header.frag))?;
-        self.write_all(slice::from_ref(&(header.atyp as u8)))?;
-        let mut buf = [0; 256];
-        write_addr(&mut buf, header.atyp, &header.dst_addr)?;
-        self.write_all(&buf)?;
-        self.write_all(&header.dst_port.to_be_bytes())?;
-        self.write_all(data)?;
+    fn write_u8(&mut self, v: u8) -> Result<(), Error> {
+        self.write_all(slice::from_ref(&v))?;
+        Ok(())
+    }
+    fn write_u16(&mut self, v: u16) -> Result<(), Error> {
+        self.write_all(&v.to_be_bytes())?;
+        Ok(())
+    }
+    fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error> {
+        self.write_all(slice::from_ref(&(atyp as u8)))?;
+        Ok(())
+    }
+    fn write_addr(&mut self, addr: &Addr) -> Result<(), Error> {
+        use AddrType::*;
+        match addr {
+            Addr::IpAddr(IpAddr::V4(addr)) => self.write_all(&addr.octets())?,
+            Addr::IpAddr(IpAddr::V6(addr)) => self.write_all(&addr.octets())?,
+            Addr::Domain(domain) => self.write_all(&domain)?,
+        }
+        Ok(())
+    }
+    fn write_version(&mut self, version: ProtocolVersion) -> Result<(), Error> {
+        self.write_all(slice::from_ref(&version.into()))?;
+        Ok(())
+    }
+    fn write_rep(&mut self, rep: ResponseCode) -> Result<(), Error> {
+        self.write_all(slice::from_ref(&(rep as u8)))?;
+        Ok(())
+    }
+    fn write_udp(&mut self, header: &UdpHeader) -> Result<(), Error> {
+        self.write_u16(header.rsv)?;
+        self.write_u8(header.frag)?;
+        self.write_atyp(header.atyp)?;
+        self.write_addr(&header.dst_addr)?;
+        self.write_u16(header.dst_port)?;
         Ok(())
     }
 }
@@ -217,14 +246,18 @@ where
     fn send_connect_reply(&mut self, connect_reply: model::ConnectReply) -> Result<(), Error> {
         trace!("send_connect_reply: {:?}", connect_reply);
         let connect_reply: raw::ConnectReply = connect_reply.into();
-        let mut buf: Vec<u8> = Vec::with_capacity(256);
-        buf.push(connect_reply.ver.into());
-        buf.push(connect_reply.rep.code());
-        buf.push(connect_reply.rsv.into());
-        buf.push(connect_reply.atyp as u8);
-        write_addr(&mut buf, connect_reply.atyp, &connect_reply.bnd_addr)?;
-        buf.extend_from_slice(&connect_reply.bnd_port.to_be_bytes());
-        self.strm.write_all(&buf)?;
+        let mut buf: [u8; 256] = [0; 256];
+        let pos = {
+            let mut cur = io::Cursor::new(&mut buf[..]);
+            cur.write_version(connect_reply.ver.clone())?;
+            cur.write_rep(connect_reply.rep.into())?;
+            cur.write_u8(connect_reply.rsv)?;
+            cur.write_atyp(connect_reply.atyp)?;
+            cur.write_addr(&connect_reply.bnd_addr)?;
+            cur.write_u16(connect_reply.bnd_port)?;
+            cur.position() as usize
+        };
+        self.strm.write_all(&buf[..pos])?;
         Ok(())
     }
 }

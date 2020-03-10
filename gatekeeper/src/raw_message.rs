@@ -218,6 +218,12 @@ pub enum Addr {
     Domain(Vec<u8>),
 }
 
+impl From<IpAddr> for Addr {
+    fn from(addr: IpAddr) -> Self {
+        Addr::IpAddr(addr)
+    }
+}
+
 impl From<model::Address> for Addr {
     fn from(addr: model::Address) -> Self {
         match addr {
