@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 use std::net::ToSocketAddrs;
 use std::thread::{self, JoinHandle};
@@ -70,28 +71,50 @@ where
 fn spawn_udp_relay(
     socks_conn: impl SocksStream + Send + 'static,
     relay: std::net::UdpSocket,
-    client_addr: SocketAddr,
+    mut client_addr: SocketAddr,
     server_addr: SocketAddr,
 ) -> Result<JoinHandle<()>, model::Error> {
     info!("spawn_udp_relay");
+    debug!("client_addr: {:?}", client_addr);
+    client_addr = SocketAddr::new(Ipv4Addr::new(127, 0, 0, 1).into(), 31338);
+    debug!("server_addr: {:?}", server_addr);
     Ok(thread::spawn(move || {
         let _socks_conn = socks_conn;
         let mut buf = [0; 4096];
+        let mut dst_set = HashSet::new();
         loop {
             let (size, addr) = relay.recv_from(&mut buf).unwrap();
-            if addr == client_addr {
+            debug!("recv_from: {}:{:?}", size, addr);
+
+            if let Some(_) = dst_set.get(&addr) {
+                debug!("server: {} -> {}", addr, client_addr);
+                relay.send_to(&buf[..size], client_addr).unwrap();
+            } else if addr.ip() == client_addr.ip() {
                 debug!("client: {} -> {}", client_addr, server_addr);
                 let datagram = read_datagram(&buf[..size]).unwrap();
-                debug!("datagram: {:?}", datagram);
-                relay.send_to(datagram.data, server_addr).unwrap();
-            } else if addr == server_addr {
-                debug!("server: {} -> {}", server_addr, client_addr);
-                relay.send_to(&buf[..size], client_addr).unwrap();
-            } else {
-                // > It MUST drop any datagrams arriving from any source IP address
-                // > other than the one recorded for the particular association.
-                warn!("unknown src packet is comming (discarded): {:?}", addr);
-            }
+                debug!(
+                    "datagram: {:?}> {:?}",
+                    datagram.dst_addr,
+                    String::from_utf8_lossy(datagram.data)
+                );
+                let addrs: Vec<_> = datagram.dst_addr.to_socket_addrs().unwrap().collect();
+                addrs.iter().for_each(|addr| {
+                    dst_set.insert(addr.clone());
+                });
+                println!("addrs: {:?}", addrs);
+                relay.send_to(datagram.data, &addrs[..]).unwrap();
+            } /*
+                   else {
+                  // if addr == server_addr {
+                  debug!("server: {} -> {}", addr, client_addr);
+                  relay.send_to(&buf[..size], client_addr).unwrap();
+              } */
+            /*
+            else {
+                  // > It MUST drop any datagrams arriving from any source IP address
+                  // > other than the one recorded for the particular association.
+                  warn!("unknown src packet is comming (discarded): {:?}", addr);
+            } */
         }
     }))
 }
@@ -185,9 +208,16 @@ where
             }
             // UDP接続をTCP接続へ関連付け
             Command::UdpAssociate => {
+                trace!("UdpAssociate");
                 let udp_relay = std::net::UdpSocket::bind(self.server_addr.clone())?;
+                trace!("bind: {:?}", self.server_addr.clone());
                 strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
+                trace!(
+                    "send_connect_reply: {:?}",
+                    self.connect_reply::<model::ErrorKind>(Ok(()))
+                );
                 let server_addr = conn_req.connect_to.clone();
+                trace!("server_addr: {:?}", server_addr);
                 spawn_udp_relay(
                     strm,
                     udp_relay,

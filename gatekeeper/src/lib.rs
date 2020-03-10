@@ -12,4 +12,6 @@ mod rw_socks_stream;
 pub mod server;
 mod server_command;
 mod session;
+#[cfg(test)]
+mod test;
 mod try_clone;

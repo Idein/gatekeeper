@@ -85,7 +85,7 @@ where
 
         while let Ok(cmd) = self.rx_cmd.recv() {
             use ServerCommand::*;
-            info!("cmd: {:?}", cmd);
+            println!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => break,
                 Connect(stream, addr) => {
@@ -102,7 +102,7 @@ where
                 }
             }
         }
-        info!("server shutdown");
+        println!("server shutdown");
         Ok(())
     }
 }
@@ -123,14 +123,20 @@ mod test {
 
     #[test]
     fn server_shutdown() {
-        let config = ServerConfig::default();
+        let mut config = ServerConfig::default();
+        config.server_ip = Ipv4Addr::new(0, 0, 0, 0).into();
 
-        let (server, tx) = Server::new(config, TcpBinder, TcpUdpConnector);
+        let (server, tx) = Server::new(
+            config,
+            TcpBinder,
+            TcpUdpConnector::new(SocketAddr::new("127.0.0.1".parse().unwrap(), 1080), 4096),
+        );
         let shutdown = Arc::new(Mutex::new(SystemTime::now()));
         let th = {
             let shutdown = shutdown.clone();
             thread::spawn(move || {
-                server.serve().ok();
+                server.serve().unwrap();
+                println!("server.ok");
                 *shutdown.lock().unwrap() = SystemTime::now();
             })
         };
@@ -162,7 +168,11 @@ mod test {
             stream: BufferStream::new(Cow::from(b"dummy".to_vec())),
             src_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1080)),
         };
-        let (server, tx) = Server::new(ServerConfig::default(), binder, TcpUdpConnector);
+        let (server, tx) = Server::new(
+            ServerConfig::default(),
+            binder,
+            TcpUdpConnector::new(SocketAddr::new("127.0.0.1".parse().unwrap(), 1080), 4096),
+        );
         let th = thread::spawn(move || {
             server.serve().ok();
         });

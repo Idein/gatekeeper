@@ -165,3 +165,13 @@ pub struct UdpDatagram<'a> {
     pub dst_addr: Address,
     pub data: &'a [u8],
 }
+
+impl<'a> UdpDatagram<'a> {
+    pub fn new(dst_addr: Address, data: &'a [u8]) -> Self {
+        UdpDatagram {
+            frag: 0,
+            dst_addr,
+            data,
+        }
+    }
+}
