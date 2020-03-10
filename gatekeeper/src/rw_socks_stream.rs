@@ -229,15 +229,17 @@ where
     }
 }
 
+/// Parse socks5 udp header expected for UDP_ASSOCIATE-d socket
 pub fn read_datagram<'a>(buf: &'a [u8]) -> Result<model::UdpDatagram<'a>, model::Error> {
     let mut cur = io::Cursor::new(buf);
     let header = cur.read_udp()?;
     let dst_addr = AddrTriple::new(header.atyp, header.dst_addr, header.dst_port).try_into()?;
+    let pos = cur.position() as usize;
     let data = cur.into_inner();
     Ok(model::UdpDatagram {
         frag: header.frag,
         dst_addr,
-        data,
+        data: &data[pos..],
     })
 }
 
