@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 use std::fmt;
 use std::io;
+use std::slice;
 
 use log::*;
 use model::{Error, ErrorKind, SocksStream};
@@ -19,7 +20,7 @@ impl<'a, T> ReadWriteStreamRef<'a, T> {
     }
 }
 
-fn write_addr(buf: &mut [u8], atyp: AddrType, addr: Addr) -> Result<(), Error> {
+fn write_addr(buf: &mut [u8], atyp: AddrType, addr: &Addr) -> Result<(), Error> {
     use AddrType::*;
     match (atyp, addr) {
         (V4, Addr::IpAddr(IpAddr::V4(addr))) => buf.clone_from_slice(&addr.octets()),
@@ -33,7 +34,7 @@ fn write_addr(buf: &mut [u8], atyp: AddrType, addr: Addr) -> Result<(), Error> {
     Ok(())
 }
 
-pub trait ReadSocksExt {
+trait ReadSocksExt {
     fn read_u8(&mut self) -> Result<u8, Error>;
     fn read_u16(&mut self) -> Result<u16, Error>;
     fn read_rsv(&mut self) -> Result<u8, Error>;
@@ -43,6 +44,10 @@ pub trait ReadSocksExt {
     fn read_atyp(&mut self) -> Result<AddrType, Error>;
     fn read_addr(&mut self, atyp: AddrType) -> Result<Addr, Error>;
     fn read_udp(&mut self) -> Result<UdpHeader, Error>;
+}
+
+trait WriteSocksExt {
+    fn write_udp(&mut self, header: &UdpHeader, data: &[u8]) -> Result<(), Error>;
 }
 
 impl<T> ReadSocksExt for T
@@ -147,6 +152,23 @@ where
     }
 }
 
+impl<T> WriteSocksExt for T
+where
+    T: io::Write,
+{
+    fn write_udp(&mut self, header: &UdpHeader, data: &[u8]) -> Result<(), Error> {
+        self.write_all(&header.rsv.to_be_bytes())?;
+        self.write_all(slice::from_ref(&header.frag))?;
+        self.write_all(slice::from_ref(&(header.atyp as u8)))?;
+        let mut buf = [0; 256];
+        write_addr(&mut buf, header.atyp, &header.dst_addr)?;
+        self.write_all(&buf)?;
+        self.write_all(&header.dst_port.to_be_bytes())?;
+        self.write_all(data)?;
+        Ok(())
+    }
+}
+
 impl<'a, T> SocksStream for ReadWriteStreamRef<'a, T>
 where
     T: io::Read + io::Write,
@@ -200,7 +222,7 @@ where
         buf.push(connect_reply.rep.code());
         buf.push(connect_reply.rsv.into());
         buf.push(connect_reply.atyp as u8);
-        write_addr(&mut buf, connect_reply.atyp, connect_reply.bnd_addr)?;
+        write_addr(&mut buf, connect_reply.atyp, &connect_reply.bnd_addr)?;
         buf.extend_from_slice(&connect_reply.bnd_port.to_be_bytes());
         self.strm.write_all(&buf)?;
         Ok(())
