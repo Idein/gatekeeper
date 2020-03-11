@@ -21,7 +21,7 @@ trait ReadSocksExt {
     fn read_udp(&mut self) -> Result<UdpHeader, Error>;
 }
 
-trait WriteSocksExt {
+pub trait WriteSocksExt {
     fn write_u8(&mut self, v: u8) -> Result<(), Error>;
     fn write_u16(&mut self, v: u16) -> Result<(), Error>;
     fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error>;
