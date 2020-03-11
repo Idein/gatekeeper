@@ -100,7 +100,7 @@ where
                 self.read_exact(&mut buf)?;
                 let addr: Vec<_> = buf
                     .chunks_exact(2)
-                    .map(|c| u16::from_ne_bytes([c[0], c[1]]))
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
                     .collect();
                 Ok(Addr::IpAddr(
                     Ipv6Addr::new(
