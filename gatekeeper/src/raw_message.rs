@@ -47,6 +47,25 @@ impl ResponseCode {
     pub fn code(&self) -> u8 {
         *self as u8
     }
+
+    #[cfg(test)]
+    pub fn from_u8(code: u8) -> Result<Self, TryFromU8Error> {
+        match code {
+            0 => Ok(ResponseCode::Success),
+            1 => Ok(ResponseCode::Failure),
+            2 => Ok(ResponseCode::RuleFailure),
+            3 => Ok(ResponseCode::NetworkUnreachable),
+            4 => Ok(ResponseCode::HostUnreachable),
+            5 => Ok(ResponseCode::ConnectionRefused),
+            6 => Ok(ResponseCode::TtlExpired),
+            7 => Ok(ResponseCode::CommandNotSupported),
+            8 => Ok(ResponseCode::AddrTypeNotSupported),
+            c => Err(TryFromU8Error {
+                value: c,
+                to: "ResponseCode".to_owned(),
+            }),
+        }
+    }
 }
 
 impl fmt::Display for ResponseCode {
@@ -218,6 +237,12 @@ pub enum Addr {
     Domain(Vec<u8>),
 }
 
+impl From<IpAddr> for Addr {
+    fn from(addr: IpAddr) -> Self {
+        Addr::IpAddr(addr)
+    }
+}
+
 impl From<model::Address> for Addr {
     fn from(addr: model::Address) -> Self {
         match addr {
@@ -304,14 +329,14 @@ pub struct ConnectRequest {
 
 /// aux for impl TryFrom to model::Address
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AddrTriple {
+pub struct AddrTriple {
     atyp: AddrType,
     addr: Addr,
     port: u16,
 }
 
 impl AddrTriple {
-    fn new(atyp: AddrType, addr: Addr, port: u16) -> Self {
+    pub fn new(atyp: AddrType, addr: Addr, port: u16) -> Self {
         Self { atyp, addr, port }
     }
 }
@@ -361,6 +386,12 @@ impl std::error::Error for TryFromAddress {
     }
 }
 
+impl From<TryFromAddress> for model::Error {
+    fn from(err: TryFromAddress) -> Self {
+        model::ErrorKind::message_fmt(format_args!("{}", err)).into()
+    }
+}
+
 impl TryFrom<ConnectRequest> for model::ConnectRequest {
     type Error = TryFromAddress;
     fn try_from(req: ConnectRequest) -> Result<Self, Self::Error> {
@@ -404,4 +435,14 @@ impl From<model::ConnectReply> for ConnectReply {
             bnd_port: port,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UdpHeader {
+    pub rsv: u16,
+    /// fragment number
+    pub frag: u8,
+    pub atyp: AddrType,
+    pub dst_addr: Addr,
+    pub dst_port: u16,
 }
