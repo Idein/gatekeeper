@@ -3,6 +3,7 @@ use std::fmt;
 use std::io;
 use std::slice;
 
+use failure::ResultExt;
 use log::*;
 use model::{Error, ErrorKind, SocksStream};
 
@@ -67,18 +68,14 @@ where
     }
 
     fn read_cmd(&mut self) -> Result<SockCommand, Error> {
-        let cmd = self
-            .read_u8()?
-            .try_into()
-            .map_err(|_| ErrorKind::message_fmt(format_args!("ConnectRequest::cmd")))?;
+        let cmd = TryInto::<SockCommand>::try_into(self.read_u8()?)
+            .context(ErrorKind::message_fmt(format_args!("ConnectRequest::cmd")))?;
         Ok(cmd)
     }
 
     fn read_atyp(&mut self) -> Result<AddrType, Error> {
-        let atyp = self
-            .read_u8()?
-            .try_into()
-            .map_err(|_| ErrorKind::message_fmt(format_args!("ConnectRequest::atyp")))?;
+        let atyp = TryInto::<AddrType>::try_into(self.read_u8()?)
+            .context(ErrorKind::message_fmt(format_args!("ConnectRequest::atyp")))?;
         Ok(atyp)
     }
 
