@@ -306,3 +306,91 @@ where
         self.rw_stream().send_connect_reply(connect_reply)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct Prim {
+        fu8: u8,
+        fu16: u16,
+        fatyp: AddrType,
+        faddr: Addr,
+        fver: ProtocolVersion,
+        frep: ResponseCode,
+        fudp: UdpHeader,
+    }
+
+    fn read_prims<T>(mut strm: T) -> Result<Prim, Error>
+    where
+        T: io::Read + io::Write,
+    {
+        let fu8 = strm.read_u8()?;
+        let fu16 = strm.read_u16()?;
+        let fatyp = strm.read_atyp()?;
+        let faddr = strm.read_addr(fatyp)?;
+        let fver = strm.read_version()?;
+        let frep = ResponseCode::from_u8(strm.read_u8()?).unwrap();
+        let fudp = strm.read_udp()?;
+        println!("read_fudp: {:?}", fudp);
+
+        let prim_read = Prim {
+            fu8,
+            fu16,
+            fatyp,
+            faddr,
+            fver,
+            frep,
+            fudp,
+        };
+        println!("read_prim: {:?}", prim_read);
+
+        Ok(prim_read)
+    }
+
+    fn write_prims<T: io::Write>(mut strm: T, prim: &Prim) -> Result<(), model::Error> {
+        strm.write_u8(prim.fu8)?;
+        strm.write_u16(prim.fu16)?;
+        strm.write_atyp(prim.fatyp)?;
+        strm.write_addr(&prim.faddr)?;
+        strm.write_version(prim.fver)?;
+        strm.write_rep(prim.frep)?;
+        strm.write_udp(&prim.fudp)?;
+        println!("write_udp: {:?}", prim.fudp);
+        Ok(())
+    }
+
+    #[test]
+    fn test_byte_buff() {
+        let prim = Prim {
+            fu8: 42,
+            fu16: 32854,
+            fatyp: AddrType::V4,
+            faddr: Addr::IpAddr(Ipv4Addr::new(1, 2, 3, 4).into()),
+            fver: 5.into(),
+            frep: ResponseCode::NetworkUnreachable,
+            fudp: UdpHeader {
+                rsv: 0,
+                frag: 0,
+                atyp: AddrType::V6,
+                dst_addr: Addr::IpAddr(Ipv6Addr::new(7, 6, 5, 4, 3, 2, 1, 0).into()),
+                dst_port: 835,
+            },
+        };
+
+        let mut buff = [0u8; 256];
+        {
+            let mut cursor = io::Cursor::new(&mut buff[..]);
+            write_prims(&mut cursor, &prim).unwrap();
+        }
+
+        let prim_ = {
+            let mut cursor = io::Cursor::new(&mut buff[..]);
+            read_prims(&mut cursor).unwrap()
+        };
+
+        println!("prim_: {:?}", prim_);
+        assert_eq!(prim, prim_);
+    }
+}

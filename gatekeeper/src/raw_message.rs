@@ -47,6 +47,25 @@ impl ResponseCode {
     pub fn code(&self) -> u8 {
         *self as u8
     }
+
+    #[cfg(test)]
+    pub fn from_u8(code: u8) -> Result<Self, TryFromU8Error> {
+        match code {
+            0 => Ok(ResponseCode::Success),
+            1 => Ok(ResponseCode::Failure),
+            2 => Ok(ResponseCode::RuleFailure),
+            3 => Ok(ResponseCode::NetworkUnreachable),
+            4 => Ok(ResponseCode::HostUnreachable),
+            5 => Ok(ResponseCode::ConnectionRefused),
+            6 => Ok(ResponseCode::TtlExpired),
+            7 => Ok(ResponseCode::CommandNotSupported),
+            8 => Ok(ResponseCode::AddrTypeNotSupported),
+            c => Err(TryFromU8Error {
+                value: c,
+                to: "ResponseCode".to_owned(),
+            }),
+        }
+    }
 }
 
 impl fmt::Display for ResponseCode {
