@@ -126,18 +126,7 @@ fn spawn_udp_relay(
                 debug!("addrs: {:?}", addrs);
                 relay.send_to(datagram.data, &addrs[..]).unwrap();
                 debug!("send_to: {:?}", datagram.dst_addr);
-            } /*
-                   else {
-                  // if addr == server_addr {
-                  debug!("server: {} -> {}", addr, client_addr);
-                  relay.send_to(&buf[..size], client_addr).unwrap();
-              } */
-            /*
-            else {
-                  // > It MUST drop any datagrams arriving from any source IP address
-                  // > other than the one recorded for the particular association.
-                  warn!("unknown src packet is comming (discarded): {:?}", addr);
-            } */
+            }
         }
     }))
 }
