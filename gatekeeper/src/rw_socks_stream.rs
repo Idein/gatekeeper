@@ -8,28 +8,6 @@ use model::{Error, ErrorKind, SocksStream};
 
 use crate::raw_message::{self as raw, *};
 
-/// Wrapper of Read/Write stream
-/// for impl SocksStream.
-pub struct ReadWriteStreamRef<'a, T> {
-    strm: &'a mut T,
-}
-
-impl<'a, T> ReadWriteStreamRef<'a, T> {
-    pub fn new(strm: &'a mut T) -> Self {
-        Self { strm }
-    }
-}
-
-fn write_addr(buf: &mut [u8], addr: &Addr) -> Result<(), Error> {
-    use AddrType::*;
-    match addr {
-        Addr::IpAddr(IpAddr::V4(addr)) => buf.clone_from_slice(&addr.octets()),
-        Addr::IpAddr(IpAddr::V6(addr)) => buf.clone_from_slice(&addr.octets()),
-        Addr::Domain(domain) => buf.clone_from_slice(&domain),
-    }
-    Ok(())
-}
-
 trait ReadSocksExt {
     fn read_u8(&mut self) -> Result<u8, Error>;
     fn read_u16(&mut self) -> Result<u16, Error>;
@@ -42,8 +20,7 @@ trait ReadSocksExt {
     fn read_udp(&mut self) -> Result<UdpHeader, Error>;
 }
 
-// TODO: private
-pub trait WriteSocksExt {
+trait WriteSocksExt {
     fn write_u8(&mut self, v: u8) -> Result<(), Error>;
     fn write_u16(&mut self, v: u16) -> Result<(), Error>;
     fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error>;
@@ -172,7 +149,6 @@ where
         Ok(())
     }
     fn write_addr(&mut self, addr: &Addr) -> Result<(), Error> {
-        use AddrType::*;
         match addr {
             Addr::IpAddr(IpAddr::V4(addr)) => self.write_all(&addr.octets())?,
             Addr::IpAddr(IpAddr::V6(addr)) => self.write_all(&addr.octets())?,
@@ -185,7 +161,7 @@ where
         Ok(())
     }
     fn write_rep(&mut self, rep: ResponseCode) -> Result<(), Error> {
-        self.write_all(slice::from_ref(&(rep as u8)))?;
+        self.write_all(slice::from_ref(&rep.code()))?;
         Ok(())
     }
     fn write_udp(&mut self, header: &UdpHeader) -> Result<(), Error> {
@@ -195,6 +171,18 @@ where
         self.write_addr(&header.dst_addr)?;
         self.write_u16(header.dst_port)?;
         Ok(())
+    }
+}
+
+/// Wrapper of Read/Write stream
+/// for impl SocksStream.
+pub struct ReadWriteStreamRef<'a, T> {
+    strm: &'a mut T,
+}
+
+impl<'a, T> ReadWriteStreamRef<'a, T> {
+    pub fn new(strm: &'a mut T) -> Self {
+        Self { strm }
     }
 }
 
