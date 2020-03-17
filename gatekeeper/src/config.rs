@@ -9,7 +9,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         ServerConfig {
-            server_ip: Ipv4Addr::new(127, 0, 0, 1).into(),
+            server_ip: Ipv4Addr::new(0, 0, 0, 0).into(),
             server_port: 1080,
         }
     }

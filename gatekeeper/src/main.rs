@@ -28,11 +28,16 @@ fn main() {
         server_port: opt.port,
     };
 
-    let (server, _tx) = gk::server::Server::new(
+    let (server, tx) = gk::server::Server::new(
         config,
         gk::acceptor::TcpBinder,
         gk::connector::TcpUdpConnector,
     );
+    ctrlc::set_handler(move || {
+        tx.send(gk::server_command::ServerCommand::Terminate).ok();
+    })
+    .expect("setting ctrl-c handler");
+
     if let Err(err) = server.serve() {
         error!("server error: {:?}", err);
     }
