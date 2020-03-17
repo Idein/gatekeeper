@@ -160,7 +160,7 @@ mod test {
     fn dummy_binder() {
         let binder = DummyBinder {
             stream: BufferStream::new(Cow::from(b"dummy".to_vec())),
-            src_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1080)),
+            src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
         let (server, tx) = Server::new(ServerConfig::default(), binder, TcpUdpConnector);
         let th = thread::spawn(move || {
