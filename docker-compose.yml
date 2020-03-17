@@ -1,0 +1,30 @@
+version: "3.4"
+
+services:
+  httpd:
+    image: httpd:2.4
+    container_name: myhttpd
+    ports:
+      - "8080:80"
+    expose:
+      - "80"
+    volumes:
+      - .:/usr/local/apache2/htdocs
+    networks:
+      - socks_network
+
+  gatekeeper:
+    build: .
+    image: gatekeeper:latest
+    container_name: gatekeeper
+    environment:
+      RUST_LOG: "gatekeeper=trace"
+    ports:
+      - "1080:1080"
+    networks:
+      - socks_network
+    tty: true
+
+networks:
+  socks_network:
+
