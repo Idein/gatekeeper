@@ -16,7 +16,15 @@ struct Opt {
     ipaddr: IpAddr,
 }
 
+fn set_handler(signals: &[i32], handler: impl Fn(i32) + Send + 'static) -> std::io::Result<()> {
+    use signal_hook::*;
+    let signals = iterator::Signals::new(signals)?;
+    std::thread::spawn(move || signals.forever().for_each(handler));
+    Ok(())
+}
+
 fn main() {
+    use signal_hook::*;
     pretty_env_logger::init_timed();
 
     println!("gatekeeperd");
@@ -33,7 +41,7 @@ fn main() {
         gk::acceptor::TcpBinder,
         gk::connector::TcpUdpConnector,
     );
-    ctrlc::set_handler(move || {
+    set_handler(&[SIGTERM, SIGINT, SIGQUIT, SIGCHLD], move |_| {
         tx.send(gk::server_command::ServerCommand::Terminate).ok();
     })
     .expect("setting ctrl-c handler");
