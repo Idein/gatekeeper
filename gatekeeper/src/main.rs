@@ -11,12 +11,20 @@ struct Opt {
     /// Set port to listen on
     port: u16,
 
-    #[structopt(short = "i", long = "ip", default_value = "127.0.0.1")]
+    #[structopt(short = "i", long = "ip", default_value = "0.0.0.0")]
     /// Set ipaddress to listen on
     ipaddr: IpAddr,
 }
 
+fn set_handler(signals: &[i32], handler: impl Fn(i32) + Send + 'static) -> std::io::Result<()> {
+    use signal_hook::*;
+    let signals = iterator::Signals::new(signals)?;
+    std::thread::spawn(move || signals.forever().for_each(handler));
+    Ok(())
+}
+
 fn main() {
+    use signal_hook::*;
     pretty_env_logger::init_timed();
 
     println!("gatekeeperd");
@@ -28,11 +36,16 @@ fn main() {
         server_port: opt.port,
     };
 
-    let (server, _tx) = gk::server::Server::new(
+    let (server, tx) = gk::server::Server::new(
         config,
         gk::acceptor::TcpBinder,
         gk::connector::TcpUdpConnector,
     );
+    set_handler(&[SIGTERM, SIGINT, SIGQUIT, SIGCHLD], move |_| {
+        tx.send(gk::server_command::ServerCommand::Terminate).ok();
+    })
+    .expect("setting ctrl-c handler");
+
     if let Err(err) = server.serve() {
         error!("server error: {:?}", err);
     }

@@ -35,8 +35,10 @@ impl Binder for TcpBinder {
     type Stream = TcpStream;
     type Iter = TcpAcceptor;
     fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<Self::Iter, Error> {
+        let tcp = net2::TcpBuilder::new_v4()?;
+        let tcp = tcp.reuse_address(true)?.bind(addr)?;
         Ok(TcpAcceptor {
-            listener: TcpListener::bind(addr)?,
+            listener: tcp.listen(0)?,
         })
     }
 }

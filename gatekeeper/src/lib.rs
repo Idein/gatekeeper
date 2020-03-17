@@ -10,6 +10,7 @@ mod pkt_stream;
 mod raw_message;
 mod rw_socks_stream;
 pub mod server;
-mod server_command;
+pub mod server_command;
 mod session;
+mod test;
 mod try_clone;
