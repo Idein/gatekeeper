@@ -11,7 +11,7 @@ struct Opt {
     /// Set port to listen on
     port: u16,
 
-    #[structopt(short = "i", long = "ip", default_value = "127.0.0.1")]
+    #[structopt(short = "i", long = "ip", default_value = "0.0.0.0")]
     /// Set ipaddress to listen on
     ipaddr: IpAddr,
 }
