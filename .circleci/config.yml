@@ -1,0 +1,55 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: circleci/rust:1.40.0-stretch
+        environment:
+          RUST_BACKTRACE: 1 
+    working_directory: /tmp/gatekeeper
+    steps:
+      - checkout
+      - run: git merge --no-edit origin/master
+      - run:
+          name: Build Gatekeeper
+          command: |
+            cargo build --verbose
+
+  integration_test:
+    machine:
+      image: circleci/classic:201808-01
+    environment:
+      RUST_BACKTRACE: 1
+    working_directory: /tmp/gatekeeper
+    steps:
+      - checkout
+      - run: git merge --no-edit origin/master
+      - run:
+          name: Install Rust
+          command: |
+            curl -sSfL https://sh.rustup.rs > rustup.sh
+            export RUST_CHANNEL=`cat rust-toolchain`
+            sh rustup.sh -y --default-toolchain ${RUST_CHANNEL}-x86_64-unknown-linux-gnu --profile minimal
+      - run:
+          name: Build Image
+          command: |
+            docker-compose build
+      - run:
+          name: Up Test Containers
+          command: |
+            docker-compose up -d
+      - run:
+          name: Integration Test
+          shell: /bin/bash --login -eo pipefail
+          command: |
+            cargo test --verbose -- --nocapture --ignored
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build
+      - integration_test:
+          requires:
+            - build
+
