@@ -116,7 +116,6 @@ mod test {
     use crate::connector::*;
 
     use std::borrow::Cow;
-    use std::net::*;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime};
@@ -149,9 +148,8 @@ mod test {
     impl Binder for DummyBinder {
         type Stream = BufferStream;
         type Iter = std::iter::Once<(Self::Stream, SocketAddr)>;
-        fn bind<A: ToSocketAddrs>(&self, addr: A) -> Result<Self::Iter, Error> {
-            let mut addr = addr.to_socket_addrs().unwrap();
-            println!("bind: {}", addr.next().unwrap());
+        fn bind(&self, addr: SocketAddr) -> Result<Self::Iter, Error> {
+            println!("bind: {}", addr);
             Ok(std::iter::once((self.stream.clone(), self.src_addr)))
         }
     }

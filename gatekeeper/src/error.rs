@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::Display;
+use std::net::SocketAddr;
 
 use failure::{Backtrace, Context, Fail};
 use model;
@@ -10,6 +11,8 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
+    #[fail(display = "address already in use: {}", addr)]
+    AddressAlreadInUse { addr: SocketAddr },
     #[fail(display = "auth error")]
     Auth,
     #[fail(display = "permission error")]
