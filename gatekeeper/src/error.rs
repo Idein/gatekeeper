@@ -1,6 +1,5 @@
 use std::fmt;
 use std::fmt::Display;
-use std::net::SocketAddr;
 
 use failure::{Backtrace, Context, Fail};
 use model;
@@ -11,8 +10,6 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
-    #[fail(display = "address already in use: {}", addr)]
-    AddressAlreadInUse { addr: SocketAddr },
     #[fail(display = "auth error")]
     Auth,
     #[fail(display = "permission error")]
@@ -89,6 +86,8 @@ impl From<model::Error> for Error {
             K::HostUnreachable { .. } => err.context(ErrorKind::Io),
             K::DomainNotResolved { .. } => err.context(ErrorKind::Io),
             K::PacketSizeLimitExceeded { .. } => err.context(ErrorKind::Io),
+            K::AddressAlreadInUse { .. } => err.context(ErrorKind::Io),
+            K::AddressNotAvailable { .. } => err.context(ErrorKind::Io),
         };
         Error { inner: ctx }
     }

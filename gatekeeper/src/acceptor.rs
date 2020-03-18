@@ -5,7 +5,7 @@ use failure::Fail;
 use log::*;
 
 use crate::byte_stream::ByteStream;
-use crate::error::{Error, ErrorKind};
+use crate::error::Error;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
@@ -48,9 +48,11 @@ impl Binder for TcpBinder {
     }
 }
 
-fn addr_error(io_err: io::Error, addr: SocketAddr) -> Error {
+fn addr_error(io_err: io::Error, addr: SocketAddr) -> model::Error {
+    use model::ErrorKind;
     match io_err.kind() {
         io::ErrorKind::AddrInUse => ErrorKind::AddressAlreadInUse { addr }.into(),
+        io::ErrorKind::AddrNotAvailable => ErrorKind::AddressNotAvailable { addr }.into(),
         _ => io_err.context(ErrorKind::Io),
     }
     .into()

@@ -27,6 +27,10 @@ pub enum ErrorKind {
     DomainNotResolved { domain: String, port: u16 },
     #[fail(display = "packet size limit exceeded: {} > {}", size, limit)]
     PacketSizeLimitExceeded { size: usize, limit: usize },
+    #[fail(display = "address already in use: {}", addr)]
+    AddressAlreadInUse { addr: SocketAddr },
+    #[fail(display = "address not available: {}", addr)]
+    AddressNotAvailable { addr: SocketAddr },
 }
 
 impl ErrorKind {
