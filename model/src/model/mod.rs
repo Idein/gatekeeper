@@ -28,11 +28,11 @@
 ///!   |                 |                 |
 ///!
 use derive_more::{Display, From, Into};
+use std::fmt;
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
-use log::*;
 use regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
@@ -79,6 +79,16 @@ pub enum Command {
 pub enum Address {
     IpAddr(IpAddr, u16),
     Domain(String, u16),
+}
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Address::*;
+        match self {
+            IpAddr(addr, port) => write!(f, "{}:{}", addr, port),
+            Domain(host, port) => write!(f, "{}:{}", host, port),
+        }
+    }
 }
 
 impl Address {
@@ -153,6 +163,7 @@ impl From<crate::error::ErrorKind> for ConnectError {
             K::PacketSizeLimitExceeded { .. } => CErr::ServerFailure,
             K::AddressAlreadInUse { .. } => CErr::ServerFailure,
             K::AddressNotAvailable { .. } => CErr::ServerFailure,
+            K::ConnectionNotAllowed { .. } => CErr::ConnectionNotAllowed,
         }
     }
 }
@@ -180,6 +191,15 @@ pub struct ConnectReply {
 pub enum L4Protocol {
     Tcp,
     Udp,
+}
+
+impl fmt::Display for L4Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            L4Protocol::Tcp => write!(f, "tcp"),
+            L4Protocol::Udp => write!(f, "udp"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

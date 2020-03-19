@@ -16,6 +16,8 @@ pub enum ErrorKind {
     Permission,
     #[fail(display = "not supported error")]
     NotSupported,
+    #[fail(display = "not allowed error")]
+    NotAllowed,
     #[fail(display = "unknown error")]
     Unknown,
 }
@@ -88,6 +90,7 @@ impl From<model::Error> for Error {
             K::PacketSizeLimitExceeded { .. } => err.context(ErrorKind::Io),
             K::AddressAlreadInUse { .. } => err.context(ErrorKind::Io),
             K::AddressNotAvailable { .. } => err.context(ErrorKind::Io),
+            K::ConnectionNotAllowed { .. } => err.context(ErrorKind::NotAllowed),
         };
         Error { inner: ctx }
     }
