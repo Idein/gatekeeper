@@ -96,18 +96,12 @@ where
         debug!("connect request: {:?}", conn_req);
         let dst_conn = match &conn_req.command {
             Command::Connect => {
-                if !self
-                    .conn_rule
-                    .check(conn_req.connect_to.clone(), L4Protocol::Tcp)
-                {
-                    let err: model::Error = model::ErrorKind::connection_not_allowed(
-                        conn_req.connect_to.clone(),
-                        L4Protocol::Tcp,
-                    )
-                    .into();
-                    error!("connection rule: {}", err);
+                if let Err(err) = check_rule(
+                    &self.conn_rule,
+                    conn_req.connect_to.clone(),
+                    L4Protocol::Tcp,
+                ) {
                     strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
-                    return Err(err.into());
                 }
                 match self
                     .dst_connector
@@ -136,5 +130,15 @@ where
 
         relay::spawn_relay(strm.into_inner(), dst_conn)?;
         Ok(())
+    }
+}
+
+fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<(), model::Error> {
+    if rule.check(addr.clone(), proto) {
+        Ok(())
+    } else {
+        let err: model::Error = model::ErrorKind::connection_not_allowed(addr, proto).into();
+        error!("connection rule: {}", err);
+        Err(err)
     }
 }
