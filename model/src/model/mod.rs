@@ -79,6 +79,15 @@ pub enum Address {
     Domain(String, u16),
 }
 
+impl Address {
+    pub fn port(&self) -> u16 {
+        match self {
+            Address::IpAddr(_, port) => *port,
+            Address::Domain(_, port) => *port,
+        }
+    }
+}
+
 impl From<SocketAddr> for Address {
     fn from(addr: SocketAddr) -> Self {
         Address::IpAddr(addr.ip().clone(), addr.port())
@@ -176,10 +185,54 @@ pub enum AddressPattern {
     Domain { pattern: Regex },
 }
 
+impl Matcher for AddressPattern {
+    type Item = Address;
+
+    fn r#match(&self, addr: &Self::Item) -> bool {
+        use AddressPattern as P;
+        match (self, addr) {
+            (P::IpAddr { addr: addrp, mask }, Address::IpAddr(addr, _)) => {
+                unimplemented!("AddressPattern::match")
+            }
+            (P::Domain { pattern }, Address::Domain(domain, _)) => {
+                unimplemented!("AddressPattern::match")
+            }
+            _ => false,
+        }
+    }
+}
+
+trait Matcher {
+    type Item;
+    fn r#match(&self, t: &Self::Item) -> bool;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum RulePattern<T> {
+pub enum RulePattern<P> {
     Any,
-    Specif(T),
+    Specif(P),
+}
+
+impl<P: Eq> RulePattern<P> {
+    fn any_or(&self, pat: P) -> bool {
+        use RulePattern::*;
+        match self {
+            Any => true,
+            Specif(spat) => spat == &pat,
+        }
+    }
+}
+
+impl<T, P> RulePattern<P>
+where
+    P: Matcher<Item = T>,
+{
+    fn r#match(&self, t: &T) -> bool {
+        match self {
+            RulePattern::Any => true,
+            RulePattern::Specif(pat) => pat.r#match(t),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -197,23 +250,90 @@ impl ConnectRulePattern {
             protocol: RulePattern::Any,
         }
     }
+
+    pub fn r#match(&self, addr: &Address, protocol: L4Protocol) -> bool {
+        if self.address.r#match(addr) {
+            return true;
+        }
+        if self.port.any_or(addr.port()) {
+            return true;
+        }
+        if self.protocol.any_or(protocol) {
+            return true;
+        }
+        return false;
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum ConnectRuleEntry {
     Allow(ConnectRulePattern),
-    Deney(ConnectRulePattern),
+    Deny(ConnectRulePattern),
 }
 
 #[derive(Debug, Clone)]
 pub struct ConnectRule {
-    pub rules: Vec<ConnectRuleEntry>,
+    rules: Vec<ConnectRuleEntry>,
 }
 
 impl ConnectRule {
+    /// allow all patterns
     pub fn any() -> Self {
         ConnectRule {
             rules: vec![ConnectRuleEntry::Allow(ConnectRulePattern::any())],
         }
+    }
+
+    /// deny all patterns
+    pub fn none() -> Self {
+        ConnectRule {
+            rules: vec![ConnectRuleEntry::Deny(ConnectRulePattern::any())],
+        }
+    }
+
+    pub fn allow(&self, addr: Address, protocol: L4Protocol) -> bool {
+        use ConnectRuleEntry::*;
+        for rule in &self.rules {
+            match rule {
+                Allow(pat) => {
+                    if pat.r#match(&addr, protocol) {
+                        return true;
+                    }
+                }
+                Deny(pat) => {
+                    if pat.r#match(&addr, protocol) {
+                        return false;
+                    }
+                }
+            }
+        }
+        unreachable!("ConnectRule::allow")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use L4Protocol::*;
+
+    #[test]
+    fn any_match() {
+        let rule = ConnectRule::any();
+        assert_eq!(
+            rule.allow(Address::IpAddr("0.0.0.0".parse().unwrap(), 80), Tcp),
+            true
+        );
+        assert_eq!(
+            rule.allow(Address::Domain("example.com".to_owned(), 443), Tcp),
+            true
+        );
+        assert_eq!(
+            rule.allow(Address::IpAddr("1.2.3.4".parse().unwrap(), 5000), Udp),
+            true
+        );
+        assert_eq!(
+            rule.allow(Address::Domain("example.com".to_owned(), 60000), Udp),
+            true
+        );
     }
 }
