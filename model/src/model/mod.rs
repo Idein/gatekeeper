@@ -31,6 +31,7 @@ use derive_more::{Display, From, Into};
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
+use log::*;
 use regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
@@ -191,18 +192,35 @@ impl Matcher for AddressPattern {
     fn r#match(&self, addr: &Self::Item) -> bool {
         use AddressPattern as P;
         match (self, addr) {
-            (P::IpAddr { addr: addrp, mask }, Address::IpAddr(addr, _)) => {
-                unimplemented!("AddressPattern::match")
+            (
+                P::IpAddr {
+                    addr: IpAddr::V4(addrp),
+                    mask,
+                },
+                Address::IpAddr(IpAddr::V4(addr), _),
+            ) => {
+                let bmask = !0u32 << mask;
+                u32::from_be_bytes(addrp.octets()) & bmask
+                    == u32::from_be_bytes(addr.octets()) & bmask
             }
-            (P::Domain { pattern }, Address::Domain(domain, _)) => {
-                unimplemented!("AddressPattern::match")
+            (
+                P::IpAddr {
+                    addr: IpAddr::V6(addrp),
+                    mask,
+                },
+                Address::IpAddr(IpAddr::V6(addr), _),
+            ) => {
+                let bmask = !0u128 << mask;
+                u128::from_be_bytes(addrp.octets()) & bmask
+                    == u128::from_be_bytes(addr.octets()) & bmask
             }
+            (P::Domain { pattern }, Address::Domain(domain, _)) => pattern.is_match(domain),
             _ => false,
         }
     }
 }
 
-trait Matcher {
+pub trait Matcher {
     type Item;
     fn r#match(&self, t: &Self::Item) -> bool;
 }
@@ -243,6 +261,18 @@ pub struct ConnectRulePattern {
 }
 
 impl ConnectRulePattern {
+    pub fn new(
+        address: RulePattern<AddressPattern>,
+        port: RulePattern<u16>,
+        protocol: RulePattern<L4Protocol>,
+    ) -> Self {
+        ConnectRulePattern {
+            address,
+            port,
+            protocol,
+        }
+    }
+
     pub fn any() -> Self {
         Self {
             address: RulePattern::Any,
@@ -252,16 +282,9 @@ impl ConnectRulePattern {
     }
 
     pub fn r#match(&self, addr: &Address, protocol: L4Protocol) -> bool {
-        if self.address.r#match(addr) {
-            return true;
-        }
-        if self.port.any_or(addr.port()) {
-            return true;
-        }
-        if self.protocol.any_or(protocol) {
-            return true;
-        }
-        return false;
+        self.address.r#match(addr)
+            && self.port.any_or(addr.port())
+            && self.protocol.any_or(protocol)
     }
 }
 
@@ -291,9 +314,33 @@ impl ConnectRule {
         }
     }
 
-    pub fn allow(&self, addr: Address, protocol: L4Protocol) -> bool {
+    pub fn allow(
+        &mut self,
+        addr: RulePattern<AddressPattern>,
+        port: RulePattern<u16>,
+        protocol: RulePattern<L4Protocol>,
+    ) {
+        self.rules
+            .push(ConnectRuleEntry::Allow(ConnectRulePattern::new(
+                addr, port, protocol,
+            )));
+    }
+
+    pub fn deny(
+        &mut self,
+        addr: RulePattern<AddressPattern>,
+        port: RulePattern<u16>,
+        protocol: RulePattern<L4Protocol>,
+    ) {
+        self.rules
+            .push(ConnectRuleEntry::Deny(ConnectRulePattern::new(
+                addr, port, protocol,
+            )));
+    }
+
+    pub fn check(&self, addr: Address, protocol: L4Protocol) -> bool {
         use ConnectRuleEntry::*;
-        for rule in &self.rules {
+        for rule in self.rules.iter().rev() {
             match rule {
                 Allow(pat) => {
                     if pat.r#match(&addr, protocol) {
@@ -320,19 +367,49 @@ mod test {
     fn any_match() {
         let rule = ConnectRule::any();
         assert_eq!(
-            rule.allow(Address::IpAddr("0.0.0.0".parse().unwrap(), 80), Tcp),
+            rule.check(Address::IpAddr("0.0.0.0".parse().unwrap(), 80), Tcp),
             true
         );
         assert_eq!(
-            rule.allow(Address::Domain("example.com".to_owned(), 443), Tcp),
+            rule.check(Address::Domain("example.com".to_owned(), 443), Tcp),
             true
         );
         assert_eq!(
-            rule.allow(Address::IpAddr("1.2.3.4".parse().unwrap(), 5000), Udp),
+            rule.check(Address::IpAddr("1.2.3.4".parse().unwrap(), 5000), Udp),
             true
         );
         assert_eq!(
-            rule.allow(Address::Domain("example.com".to_owned(), 60000), Udp),
+            rule.check(Address::Domain("example.com".to_owned(), 60000), Udp),
+            true
+        );
+    }
+
+    #[test]
+    fn domain_pattern() {
+        use RulePattern::*;
+        let mut rule = ConnectRule::none();
+        rule.allow(
+            Specif(AddressPattern::Domain {
+                pattern: Regex::new(r"(.*\.)?actcast\.io").unwrap(),
+            }),
+            Any,
+            Any,
+        );
+
+        assert_eq!(
+            rule.check(Address::IpAddr("0.0.0.0".parse().unwrap(), 80), Tcp),
+            false
+        );
+        assert_eq!(
+            rule.check(Address::Domain("example.com".to_owned(), 443), Tcp),
+            false
+        );
+        assert_eq!(
+            rule.check(Address::Domain("actcast.io".to_owned(), 60000), Udp),
+            true
+        );
+        assert_eq!(
+            rule.check(Address::Domain("www.actcast.io".to_owned(), 60000), Udp),
             true
         );
     }
