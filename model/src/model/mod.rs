@@ -337,6 +337,7 @@ pub enum ConnectRuleEntry {
 
 #[derive(Debug, Clone)]
 pub struct ConnectRule {
+    // rules.len() >= 1
     rules: Vec<ConnectRuleEntry>,
 }
 
