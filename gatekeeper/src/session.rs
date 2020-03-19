@@ -96,6 +96,20 @@ where
         debug!("connect request: {:?}", conn_req);
         let dst_conn = match &conn_req.command {
             Command::Connect => {
+                if !self
+                    .conn_rule
+                    .check(conn_req.connect_to.clone(), L4Protocol::Tcp)
+                {
+                    let err: model::Error = model::ErrorKind::connection_not_allowed(
+                        conn_req.connect_to.clone(),
+                        L4Protocol::Tcp,
+                    )
+                    .into();
+                    error!("check: {}", err);
+                    trace!("check: {:?}", err);
+                    strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                    return Err(err.into());
+                }
                 match self
                     .dst_connector
                     .connect_byte_stream(conn_req.connect_to.clone())
