@@ -8,6 +8,7 @@ mod general_stream;
 mod method_selector;
 mod pkt_stream;
 mod raw_message;
+mod relay;
 mod rw_socks_stream;
 pub mod server;
 pub mod server_command;

@@ -1,13 +1,11 @@
-use std::io;
-use std::thread::{self, JoinHandle};
-
 use log::*;
 
 use crate::auth_service::*;
-use crate::byte_stream::{BoxedStream, ByteStream};
+use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::method_selector::MethodSelector;
+use crate::relay;
 use crate::rw_socks_stream::ReadWriteStream;
 
 use model::dao::*;
@@ -22,44 +20,6 @@ pub struct Session<C, D, S> {
     pub dst_connector: D,
     pub method_selector: S,
     pub server_addr: SocketAddr,
-}
-
-fn spawn_relay_half<S, D>(
-    name: &str,
-    mut src: S,
-    mut dst: D,
-) -> Result<JoinHandle<()>, model::Error>
-where
-    S: io::Read + Send + 'static,
-    D: io::Write + Send + 'static,
-{
-    info!("spawn_relay_half");
-    let name = name.to_owned();
-    thread::Builder::new()
-        .name(name.clone())
-        .spawn(move || {
-            info!("spawned: {}", name);
-            if let Err(err) = io::copy(&mut src, &mut dst) {
-                error!("relay ({}): {}", name, err);
-            }
-        })
-        .map_err(Into::into)
-}
-
-fn spawn_relay<R>(
-    client_conn: BoxedStream,
-    server_conn: R,
-) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error>
-where
-    R: ByteStream,
-{
-    info!("spawn_relay");
-    let (read_client, write_client) = client_conn.split()?;
-    let (read_server, write_server) = server_conn.split()?;
-    Ok((
-        spawn_relay_half("relay: outbound", read_client, write_server)?,
-        spawn_relay_half("relay: incoming", read_server, write_client)?,
-    ))
 }
 
 impl<C, D, S> Session<C, D, S>
@@ -158,7 +118,7 @@ where
             }
         };
 
-        spawn_relay(strm.into_inner(), dst_conn)?;
+        relay::spawn_relay(strm.into_inner(), dst_conn)?;
         Ok(())
     }
 }
