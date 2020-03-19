@@ -191,8 +191,14 @@ pub struct UdpDatagram<'a> {
 
 #[derive(Debug, Clone)]
 pub enum AddressPattern {
-    IpAddr { addr: IpAddr, mask: u8 },
-    Domain { pattern: Regex },
+    /// e.g. 127.0.0.1/16
+    IpAddr {
+        addr: IpAddr,
+        mask: u8,
+    },
+    Domain {
+        pattern: Regex,
+    },
 }
 
 impl From<Regex> for AddressPattern {
@@ -389,19 +395,61 @@ mod test {
     }
 
     #[test]
+    fn none_match() {
+        use Address::Domain;
+        let rule = ConnectRule::none();
+        assert!(!rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
+        assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
+        assert!(!rule.check("1.2.3.4:5000".parse().unwrap(), Udp));
+        assert!(!rule.check(Domain("example.com".to_owned(), 60000), Udp),);
+    }
+
+    #[test]
     fn domain_pattern() {
         use Address::Domain;
-        use AddressPattern as Pat;
         use RulePattern::*;
         let mut rule = ConnectRule::none();
         rule.allow(
             Specif(Regex::new(r"(.*\.)?actcast\.io").unwrap().into()),
             Any,
-            Any,
+            Specif(L4Protocol::Tcp),
         );
         assert!(!rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
         assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
-        assert!(rule.check(Domain("actcast.io".to_owned(), 60000), Udp));
-        assert!(rule.check(Domain("www.actcast.io".to_owned(), 60000), Udp));
+        assert!(rule.check(Domain("actcast.io".to_owned(), 60000), Tcp));
+        assert!(!rule.check(Domain("actcast.io".to_owned(), 60000), Udp));
+        assert!(rule.check(Domain("www.actcast.io".to_owned(), 65535), Tcp));
+        assert!(!rule.check(Domain("www.actcast.io".to_owned(), 32768), Udp));
+    }
+
+    #[test]
+    fn address_pattern() {
+        use Address::Domain;
+        use AddressPattern as Pat;
+        use RulePattern::*;
+        let mut rule = ConnectRule::none();
+        rule.allow(
+            Specif(Pat::IpAddr {
+                addr: "192.168.0.1".parse().unwrap(),
+                mask: 16,
+            }),
+            Specif(80),
+            Any,
+        );
+        rule.allow(
+            Specif(Pat::IpAddr {
+                addr: "192.168.0.1".parse().unwrap(),
+                mask: 16,
+            }),
+            Specif(443),
+            Any,
+        );
+        assert!(!rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
+        assert!(rule.check("192.168.0.0:80".parse().unwrap(), Tcp));
+        assert!(rule.check("192.168.255.255:443".parse().unwrap(), Udp));
+        assert!(!rule.check("192.167.255.255:443".parse().unwrap(), Tcp));
+        assert!(rule.check("192.168.255.255:80".parse().unwrap(), Tcp));
+        assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
+        assert!(!rule.check(Domain("actcast.io".to_owned(), 60000), Udp));
     }
 }
