@@ -28,6 +28,7 @@
 ///!   |                 |                 |
 ///!
 use derive_more::{Display, From, Into};
+use std::collections::BTreeSet;
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -166,4 +167,31 @@ pub struct UdpDatagram<'a> {
     pub frag: u8,
     pub dst_addr: Address,
     pub data: &'a [u8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ConnectRuleEntry {
+    pub address: Address,
+    pub protocol: L4Protocol,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ConnectRule {
+    rules: BTreeSet<ConnectRuleEntry>,
+}
+
+impl ConnectRule {
+    pub fn new() -> Self {
+        Self {
+            rules: BTreeSet::new(),
+        }
+    }
+
+    pub fn allow(&mut self, address: Address, protocol: L4Protocol) {
+        self.rules.insert(ConnectRuleEntry { address, protocol });
+    }
+
+    pub fn check(&self, address: Address, protocol: L4Protocol) -> bool {
+        self.rules.contains(&ConnectRuleEntry { address, protocol })
+    }
 }
