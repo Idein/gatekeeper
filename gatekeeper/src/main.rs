@@ -31,9 +31,11 @@ fn main() {
     let opt = Opt::from_args();
     debug!("option: {:?}", opt);
 
-    let config = gk::config::ServerConfig {
-        server_ip: opt.ipaddr,
-        server_port: opt.port,
+    let config = {
+        let mut config = gk::config::ServerConfig::default();
+        config.server_ip = opt.ipaddr;
+        config.server_port = opt.port;
+        config
     };
 
     let (server, tx) = gk::server::Server::new(

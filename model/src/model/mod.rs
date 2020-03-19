@@ -28,9 +28,10 @@
 ///!   |                 |                 |
 ///!
 use derive_more::{Display, From, Into};
-use std::collections::BTreeSet;
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
+use regex::Regex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
 pub struct ProtocolVersion(u8);
@@ -169,29 +170,50 @@ pub struct UdpDatagram<'a> {
     pub data: &'a [u8],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ConnectRuleEntry {
-    pub address: Address,
-    pub protocol: L4Protocol,
+#[derive(Debug, Clone)]
+pub enum AddressPattern {
+    IpAddr { addr: IpAddr, mask: u8 },
+    Domain { pattern: Regex },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RulePattern<T> {
+    Any,
+    Specif(T),
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectRulePattern {
+    pub address: RulePattern<AddressPattern>,
+    pub port: RulePattern<u16>,
+    pub protocol: RulePattern<L4Protocol>,
+}
+
+impl ConnectRulePattern {
+    pub fn any() -> Self {
+        Self {
+            address: RulePattern::Any,
+            port: RulePattern::Any,
+            protocol: RulePattern::Any,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ConnectRuleEntry {
+    Allow(ConnectRulePattern),
+    Deney(ConnectRulePattern),
+}
+
+#[derive(Debug, Clone)]
 pub struct ConnectRule {
-    rules: BTreeSet<ConnectRuleEntry>,
+    pub rules: Vec<ConnectRuleEntry>,
 }
 
 impl ConnectRule {
-    pub fn new() -> Self {
-        Self {
-            rules: BTreeSet::new(),
+    pub fn any() -> Self {
+        ConnectRule {
+            rules: vec![ConnectRuleEntry::Allow(ConnectRulePattern::any())],
         }
-    }
-
-    pub fn allow(&mut self, address: Address, protocol: L4Protocol) {
-        self.rules.insert(ConnectRuleEntry { address, protocol });
-    }
-
-    pub fn check(&self, address: Address, protocol: L4Protocol) -> bool {
-        self.rules.contains(&ConnectRuleEntry { address, protocol })
     }
 }

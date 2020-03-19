@@ -97,6 +97,7 @@ where
                         self.connector.clone(),
                         OnlyNoAuth::new(),
                         self.config.server_addr(),
+                        self.config.connect_rule(),
                     );
                     spawn_session(session);
                 }

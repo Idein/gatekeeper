@@ -20,6 +20,7 @@ pub struct Session<C, D, S> {
     pub dst_connector: D,
     pub method_selector: S,
     pub server_addr: SocketAddr,
+    pub conn_rule: ConnectRule,
 }
 
 impl<C, D, S> Session<C, D, S>
@@ -35,6 +36,7 @@ where
         dst_connector: D,
         method_selector: S,
         server_addr: SocketAddr,
+        conn_rule: ConnectRule,
     ) -> Self {
         Self {
             version,
@@ -43,6 +45,7 @@ where
             dst_connector,
             method_selector,
             server_addr,
+            conn_rule,
         }
     }
 
