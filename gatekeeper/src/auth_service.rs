@@ -6,18 +6,18 @@ use model::Error;
 
 pub trait AuthService: fmt::Debug {
     /// authentication then return Wrapped stream
-    fn auth<B>(&self, conn: B) -> Result<BoxedStream, Error>
+    fn auth<'a, B>(&self, conn: B) -> Result<BoxedStream<'a>, Error>
     where
-        B: ByteStream + 'static;
+        B: ByteStream + 'a;
 }
 
 #[derive(Debug)]
 pub struct NoAuthService;
 
 impl AuthService for NoAuthService {
-    fn auth<B>(&self, conn: B) -> Result<BoxedStream, Error>
+    fn auth<'a, B>(&self, conn: B) -> Result<BoxedStream<'a>, Error>
     where
-        B: ByteStream + 'static,
+        B: ByteStream + 'a,
     {
         // pass through without any authentication
         Ok(Box::new(conn))
