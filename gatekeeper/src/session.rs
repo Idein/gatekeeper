@@ -131,8 +131,23 @@ where
         let mut strm = ReadWriteStream::new(relay);
         let conn_req = strm.recv_connect_request()?;
         debug!("connect request: {:?}", conn_req);
-        match &conn_req.command {
-            Command::Connect => {}
+        let dst_conn = match &conn_req.command {
+            Command::Connect => {
+                match self
+                    .dst_connector
+                    .connect_byte_stream(conn_req.connect_to.clone())
+                {
+                    Ok(conn) => {
+                        strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
+                        conn
+                    }
+                    Err(err) => {
+                        error!("connect error: {:?}", err);
+                        strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                        return Err(err.into());
+                    }
+                }
+            }
             cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
                 debug!("command not supported: {:?}", cmd);
                 let not_supported: model::Error = ErrorKind::command_not_supported(*cmd).into();
@@ -140,21 +155,6 @@ where
                 let rep = self.connect_reply(Err(not_supported.kind().clone()));
                 strm.send_connect_reply(rep)?;
                 return Err(not_supported.into());
-            }
-        }
-
-        let dst_conn = match self
-            .dst_connector
-            .connect_byte_stream(conn_req.connect_to.clone())
-        {
-            Ok(conn) => {
-                strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
-                conn
-            }
-            Err(err) => {
-                error!("connect error: {:?}", err);
-                strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
-                return Err(err.into());
             }
         };
 
