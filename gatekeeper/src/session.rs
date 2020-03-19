@@ -105,8 +105,7 @@ where
                         L4Protocol::Tcp,
                     )
                     .into();
-                    error!("check: {}", err);
-                    trace!("check: {:?}", err);
+                    error!("connection rule: {}", err);
                     strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
                     return Err(err.into());
                 }
