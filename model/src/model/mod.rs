@@ -30,6 +30,7 @@
 use derive_more::{Display, From, Into};
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::str::FromStr;
 
 use log::*;
 use regex::Regex;
@@ -92,6 +93,14 @@ impl Address {
 impl From<SocketAddr> for Address {
     fn from(addr: SocketAddr) -> Self {
         Address::IpAddr(addr.ip().clone(), addr.port())
+    }
+}
+
+impl FromStr for Address {
+    type Err = std::net::AddrParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let addr: SocketAddr = s.parse()?;
+        Ok(addr.into())
     }
 }
 
@@ -184,6 +193,12 @@ pub struct UdpDatagram<'a> {
 pub enum AddressPattern {
     IpAddr { addr: IpAddr, mask: u8 },
     Domain { pattern: Regex },
+}
+
+impl From<Regex> for AddressPattern {
+    fn from(reg: Regex) -> Self {
+        AddressPattern::Domain { pattern: reg }
+    }
 }
 
 impl Matcher for AddressPattern {
@@ -365,52 +380,28 @@ mod test {
 
     #[test]
     fn any_match() {
+        use Address::Domain;
         let rule = ConnectRule::any();
-        assert_eq!(
-            rule.check(Address::IpAddr("0.0.0.0".parse().unwrap(), 80), Tcp),
-            true
-        );
-        assert_eq!(
-            rule.check(Address::Domain("example.com".to_owned(), 443), Tcp),
-            true
-        );
-        assert_eq!(
-            rule.check(Address::IpAddr("1.2.3.4".parse().unwrap(), 5000), Udp),
-            true
-        );
-        assert_eq!(
-            rule.check(Address::Domain("example.com".to_owned(), 60000), Udp),
-            true
-        );
+        assert!(rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
+        assert!(rule.check(Domain("example.com".to_owned(), 443), Tcp));
+        assert!(rule.check("1.2.3.4:5000".parse().unwrap(), Udp));
+        assert!(rule.check(Domain("example.com".to_owned(), 60000), Udp),);
     }
 
     #[test]
     fn domain_pattern() {
+        use Address::Domain;
+        use AddressPattern as Pat;
         use RulePattern::*;
         let mut rule = ConnectRule::none();
         rule.allow(
-            Specif(AddressPattern::Domain {
-                pattern: Regex::new(r"(.*\.)?actcast\.io").unwrap(),
-            }),
+            Specif(Regex::new(r"(.*\.)?actcast\.io").unwrap().into()),
             Any,
             Any,
         );
-
-        assert_eq!(
-            rule.check(Address::IpAddr("0.0.0.0".parse().unwrap(), 80), Tcp),
-            false
-        );
-        assert_eq!(
-            rule.check(Address::Domain("example.com".to_owned(), 443), Tcp),
-            false
-        );
-        assert_eq!(
-            rule.check(Address::Domain("actcast.io".to_owned(), 60000), Udp),
-            true
-        );
-        assert_eq!(
-            rule.check(Address::Domain("www.actcast.io".to_owned(), 60000), Udp),
-            true
-        );
+        assert!(!rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
+        assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
+        assert!(rule.check(Domain("actcast.io".to_owned(), 60000), Udp));
+        assert!(rule.check(Domain("www.actcast.io".to_owned(), 60000), Udp));
     }
 }
