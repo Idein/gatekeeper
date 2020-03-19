@@ -86,6 +86,8 @@ impl From<model::Error> for Error {
             K::HostUnreachable { .. } => err.context(ErrorKind::Io),
             K::DomainNotResolved { .. } => err.context(ErrorKind::Io),
             K::PacketSizeLimitExceeded { .. } => err.context(ErrorKind::Io),
+            K::AddressAlreadInUse { .. } => err.context(ErrorKind::Io),
+            K::AddressNotAvailable { .. } => err.context(ErrorKind::Io),
         };
         Error { inner: ctx }
     }

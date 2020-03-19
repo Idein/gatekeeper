@@ -130,6 +130,8 @@ impl From<crate::error::ErrorKind> for ConnectError {
             K::HostUnreachable { .. } => CErr::HostUnreachable,
             K::DomainNotResolved { .. } => CErr::NetworkUnreachable,
             K::PacketSizeLimitExceeded { .. } => CErr::ServerFailure,
+            K::AddressAlreadInUse { .. } => CErr::ServerFailure,
+            K::AddressNotAvailable { .. } => CErr::ServerFailure,
         }
     }
 }
