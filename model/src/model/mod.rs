@@ -629,6 +629,7 @@ mod test {
             let rule: ConnectRule = serde_yaml::from_str(&str).unwrap();
             serde_yaml::to_value(&rule).unwrap()
         };
+        println!("rule(as yaml):\n{}", serde_yaml::to_string(&rule).unwrap());
         assert_eq!(&value, &value2);
     }
 }
