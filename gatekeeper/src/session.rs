@@ -1,9 +1,9 @@
 use log::*;
 
+use crate::auth_service::AuthService;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::error::Error;
-use crate::method_selector::MethodSelector;
 use crate::relay;
 use crate::rw_socks_stream::ReadWriteStream;
 
@@ -17,7 +17,7 @@ pub struct Session<C, D, S> {
     pub src_conn: Option<C>,
     pub src_addr: SocketAddr,
     pub dst_connector: D,
-    pub method_selector: S,
+    pub authorizer: S,
     pub server_addr: SocketAddr,
     pub conn_rule: ConnectRule,
 }
@@ -26,14 +26,14 @@ impl<C, D, S> Session<C, D, S>
 where
     C: ByteStream + 'static,
     D: Connector,
-    S: MethodSelector,
+    S: AuthService,
 {
     pub fn new(
         version: ProtocolVersion,
         src_conn: C,
         src_addr: SocketAddr,
         dst_connector: D,
-        method_selector: S,
+        authorizer: S,
         server_addr: SocketAddr,
         conn_rule: ConnectRule,
     ) -> Self {
@@ -42,7 +42,7 @@ where
             src_conn: Some(src_conn),
             src_addr,
             dst_connector,
-            method_selector,
+            authorizer,
             server_addr,
             conn_rule,
         }
@@ -66,7 +66,7 @@ where
             let candidates = strm.recv_method_candidates()?;
             trace!("candidates: {:?}", candidates);
 
-            let selection = self.method_selector.select(&candidates.method)?;
+            let selection = self.authorizer.select(&candidates.method)?;
             trace!("selection: {:?}", selection);
 
             match selection {
@@ -88,7 +88,7 @@ where
             }
         };
 
-        let relay = self.method_selector.authorize(method, src_conn)?;
+        let relay = self.authorizer.authorize(method, src_conn)?;
 
         let mut strm = ReadWriteStream::new(relay);
         let conn_req = strm.recv_connect_request()?;

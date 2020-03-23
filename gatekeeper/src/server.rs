@@ -4,11 +4,11 @@ use std::thread;
 use log::*;
 
 use crate::acceptor::Binder;
+use crate::auth_service::{AuthService, NoAuthService};
 use crate::byte_stream::ByteStream;
 use crate::config::ServerConfig;
 use crate::connector::Connector;
 use crate::error::Error;
-use crate::method_selector::{MethodSelector, NoAuthService};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
 
@@ -49,7 +49,7 @@ fn spawn_session<S, D, M>(mut session: Session<S, D, M>) -> thread::JoinHandle<R
 where
     S: ByteStream + 'static,
     D: Connector + 'static,
-    M: MethodSelector + 'static,
+    M: AuthService + 'static,
 {
     thread::spawn(move || session.start())
 }

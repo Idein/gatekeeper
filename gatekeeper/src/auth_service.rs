@@ -4,7 +4,7 @@ use model::{Error, Method};
 
 use crate::byte_stream::{BoxedStream, ByteStream};
 
-pub trait MethodSelector: Send {
+pub trait AuthService: Send {
     /// decide auth method from candidates
     ///
     /// # Details
@@ -34,7 +34,7 @@ impl NoAuthService {
     }
 }
 
-impl MethodSelector for NoAuthService {
+impl AuthService for NoAuthService {
     fn select(&self, candidates: &[Method]) -> Result<Option<Method>, Error> {
         if candidates.contains(&Method::NoAuth) {
             Ok(Some(Method::NoAuth))
