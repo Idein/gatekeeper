@@ -100,7 +100,9 @@ where
                     conn_req.connect_to.clone(),
                     L4Protocol::Tcp,
                 ) {
+                    // filter out request not sufficies the connection rule
                     strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                    return Ok(());
                 }
                 match self
                     .dst_connector
