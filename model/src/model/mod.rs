@@ -33,6 +33,7 @@ use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
+use log::*;
 use regex::Regex;
 use serde::*;
 
@@ -505,11 +506,13 @@ impl ConnectRule {
             match rule {
                 Allow(pat) => {
                     if pat.r#match(&addr, protocol) {
+                        trace!("match(allow): {:?}: {}/{}", pat, addr, protocol);
                         return true;
                     }
                 }
                 Deny(pat) => {
                     if pat.r#match(&addr, protocol) {
+                        trace!("match(deny): {:?}: {}/{}", pat, addr, protocol);
                         return false;
                     }
                 }

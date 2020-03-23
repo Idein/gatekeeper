@@ -13,7 +13,7 @@ pub fn spawn_relay<R>(
 where
     R: ByteStream,
 {
-    info!("spawn_relay");
+    debug!("spawn_relay");
     let (read_client, write_client) = client_conn.split()?;
     let (read_server, write_server) = server_conn.split()?;
     Ok((
@@ -31,12 +31,12 @@ where
     S: io::Read + Send + 'static,
     D: io::Write + Send + 'static,
 {
-    info!("spawn_relay_half");
+    debug!("spawn_relay_half");
     let name = name.to_owned();
     thread::Builder::new()
         .name(name.clone())
         .spawn(move || {
-            info!("spawned: {}", name);
+            debug!("spawned: {}", name);
             if let Err(err) = io::copy(&mut src, &mut dst) {
                 error!("relay ({}): {}", name, err);
             }
