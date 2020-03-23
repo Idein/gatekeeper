@@ -34,6 +34,7 @@ pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
 use regex::Regex;
+use serde::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
 pub struct ProtocolVersion(u8);
@@ -187,7 +188,7 @@ pub struct ConnectReply {
     pub server_addr: Address,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum L4Protocol {
     Tcp,
     Udp,
@@ -196,8 +197,8 @@ pub enum L4Protocol {
 impl fmt::Display for L4Protocol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            L4Protocol::Tcp => write!(f, "tcp"),
-            L4Protocol::Udp => write!(f, "udp"),
+            L4Protocol::Tcp => write!(f, "Tcp"),
+            L4Protocol::Udp => write!(f, "Udp"),
         }
     }
 }
@@ -209,14 +210,12 @@ pub struct UdpDatagram<'a> {
     pub data: &'a [u8],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AddressPattern {
     /// e.g. 127.0.0.1/16
-    IpAddr {
-        addr: IpAddr,
-        mask: u8,
-    },
+    IpAddr { addr: IpAddr, mask: u8 },
     Domain {
+        #[serde(with = "serde_regex")]
         pattern: Regex,
     },
 }
@@ -266,10 +265,28 @@ pub trait Matcher {
     fn r#match(&self, t: &Self::Item) -> bool;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum RulePattern<P> {
     Any,
     Specif(P),
+}
+
+impl<P> RulePattern<P> {
+    pub fn is_any(&self) -> bool {
+        if let RulePattern::Any = self {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_specif(&self) -> bool {
+        if let RulePattern::Specif(_) = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl<P: Eq> RulePattern<P> {
@@ -294,7 +311,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectRulePattern {
     pub address: RulePattern<AddressPattern>,
     pub port: RulePattern<u16>,
@@ -322,6 +339,15 @@ impl ConnectRulePattern {
         }
     }
 
+    pub fn is_any(&self) -> bool {
+        let Self {
+            ref address,
+            ref port,
+            ref protocol,
+        } = self;
+        address.is_any() && port.is_any() && protocol.is_any()
+    }
+
     pub fn r#match(&self, addr: &Address, protocol: L4Protocol) -> bool {
         self.address.r#match(addr)
             && self.port.any_or(addr.port())
@@ -329,16 +355,97 @@ impl ConnectRulePattern {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConnectRuleEntry {
     Allow(ConnectRulePattern),
     Deny(ConnectRulePattern),
 }
 
+impl ConnectRuleEntry {
+    pub fn sum<R>(&self, f: impl FnOnce(&ConnectRulePattern) -> R) -> R {
+        use ConnectRuleEntry::*;
+        match self {
+            Allow(pat) => f(pat),
+            Deny(pat) => f(pat),
+        }
+    }
+}
+
+/// Connection rules
+///
+/// All instances of this type are constructed by `any` or `none` method.
 #[derive(Debug, Clone)]
 pub struct ConnectRule {
     // rules.len() >= 1
     rules: Vec<ConnectRuleEntry>,
+}
+
+mod format {
+    use super::*;
+
+    impl Serialize for ConnectRule {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            use serde::ser::SerializeSeq;
+            let mut seq = serializer.serialize_seq(Some(self.rules.len()))?;
+            for elm in &self.rules {
+                seq.serialize_element(elm)?;
+            }
+            seq.end()
+        }
+    }
+
+    fn deserialize_connect_rule<'de, D>(deserializer: D) -> Result<ConnectRule, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{SeqAccess, Visitor};
+        struct ConnectRuleVisitor;
+
+        impl<'de> Visitor<'de> for ConnectRuleVisitor {
+            type Value = Vec<ConnectRuleEntry>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a nonempty sequence of ConnectRules")
+            }
+
+            fn visit_seq<S>(self, mut seq: S) -> Result<Self::Value, S::Error>
+            where
+                S: SeqAccess<'de>,
+            {
+                let mut rules = vec![];
+                // read 1st element as base(=default) rule
+                let base_rule: ConnectRuleEntry = seq.next_element()?.ok_or_else(|| {
+                    de::Error::custom("no values in seq when looking for ConnectRule")
+                })?;
+                // base rule should be equal to any or none
+                if !base_rule.sum(|entry| entry.is_any()) {
+                    Err(de::Error::custom("base rule is not any or none"))?;
+                }
+                rules.push(base_rule);
+                // read remaining elements
+                while let Some(elm) = seq.next_element()? {
+                    rules.push(elm);
+                }
+                Ok(rules)
+            }
+        }
+
+        deserializer
+            .deserialize_seq(ConnectRuleVisitor)
+            .map(|rules| ConnectRule { rules })
+    }
+
+    impl<'de> Deserialize<'de> for ConnectRule {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserialize_connect_rule(deserializer)
+        }
+    }
 }
 
 impl ConnectRule {
@@ -353,6 +460,18 @@ impl ConnectRule {
     pub fn none() -> Self {
         ConnectRule {
             rules: vec![ConnectRuleEntry::Deny(ConnectRulePattern::any())],
+        }
+    }
+
+    pub fn is_any(&self) -> bool {
+        if let Some(entry) = self.rules.get(0) {
+            use ConnectRuleEntry::*;
+            match entry {
+                Allow(pat) => pat.is_any(),
+                Deny(_) => false,
+            }
+        } else {
+            false
         }
     }
 
@@ -472,5 +591,45 @@ mod test {
         assert!(rule.check("192.168.255.255:80".parse().unwrap(), Tcp));
         assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
         assert!(!rule.check(Domain("actcast.io".to_owned(), 60000), Udp));
+    }
+
+    #[test]
+    fn serde_rules() {
+        use Address::Domain;
+        use AddressPattern as Pat;
+        use RulePattern::*;
+        let mut rule = ConnectRule::none();
+        rule.allow(
+            Specif(Pat::IpAddr {
+                addr: "192.168.0.1".parse().unwrap(),
+                mask: 16,
+            }),
+            Specif(80),
+            Any,
+        );
+        rule.allow(
+            Specif(Pat::IpAddr {
+                addr: "192.168.0.1".parse().unwrap(),
+                mask: 16,
+            }),
+            Specif(443),
+            Any,
+        );
+        rule.allow(
+            Specif(Regex::new(r"(.*\.)?actcast\.io").unwrap().into()),
+            Any,
+            Specif(L4Protocol::Tcp),
+        );
+
+        // compares on yaml::Value
+        // rule -> yaml
+        let value = serde_yaml::to_value(&rule).unwrap();
+        // rule -> str -> rule' -> yaml
+        let value2 = {
+            let str = serde_yaml::to_string(&rule).unwrap();
+            let rule: ConnectRule = serde_yaml::from_str(&str).unwrap();
+            serde_yaml::to_value(&rule).unwrap()
+        };
+        assert_eq!(&value, &value2);
     }
 }
