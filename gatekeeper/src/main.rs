@@ -44,7 +44,7 @@ fn main() {
         gk::connector::TcpUdpConnector,
     );
     set_handler(&[SIGTERM, SIGINT, SIGQUIT, SIGCHLD], move |_| {
-        tx.send(gk::server_command::ServerCommand::Terminate).ok();
+        tx.send(gk::ServerCommand::Terminate).ok();
     })
     .expect("setting ctrl-c handler");
 
