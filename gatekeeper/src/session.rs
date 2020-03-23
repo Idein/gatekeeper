@@ -1,6 +1,5 @@
 use log::*;
 
-use crate::auth_service::*;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::error::Error;
@@ -71,12 +70,12 @@ where
             trace!("selection: {:?}", selection);
 
             match selection {
-                Some((method, auth)) => {
+                Some(method) => {
                     strm.send_method_selection(MethodSelection {
                         version: self.version,
                         method: method.clone(),
                     })?;
-                    (src_conn, auth)
+                    (src_conn, method)
                 }
                 None => {
                     // no acceptable method
@@ -89,7 +88,7 @@ where
             }
         };
 
-        let relay = method.auth(src_conn)?;
+        let relay = self.method_selector.authorize(method, src_conn)?;
 
         let mut strm = ReadWriteStream::new(relay);
         let conn_req = strm.recv_connect_request()?;

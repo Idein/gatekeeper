@@ -8,7 +8,7 @@ use crate::byte_stream::ByteStream;
 use crate::config::ServerConfig;
 use crate::connector::Connector;
 use crate::error::Error;
-use crate::method_selector::{MethodSelector, OnlyNoAuth};
+use crate::method_selector::{MethodSelector, NoAuthService};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
 
@@ -95,7 +95,7 @@ where
                         stream,
                         addr,
                         self.connector.clone(),
-                        OnlyNoAuth::new(),
+                        NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
                     );
