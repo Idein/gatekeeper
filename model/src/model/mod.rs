@@ -595,7 +595,6 @@ mod test {
 
     #[test]
     fn serde_rules() {
-        use Address::Domain;
         use AddressPattern as Pat;
         use RulePattern::*;
         let mut rule = ConnectRule::none();
