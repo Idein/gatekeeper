@@ -10,6 +10,8 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
+    #[fail(display = "config error")]
+    Config,
     #[fail(display = "auth error")]
     Auth,
     #[fail(display = "permission error")]

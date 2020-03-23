@@ -1,5 +1,8 @@
-use log::*;
+use std::io;
 use std::net::IpAddr;
+use std::path::PathBuf;
+
+use log::*;
 use structopt::*;
 
 use gatekeeper as gk;
@@ -14,9 +17,13 @@ struct Opt {
     #[structopt(short = "i", long = "ip", default_value = "0.0.0.0")]
     /// Set ipaddress to listen on
     ipaddr: IpAddr,
+
+    #[structopt(short = "r", long = "rule")]
+    /// Set path to connection rule file (format: yaml)
+    rulefile: Option<PathBuf>,
 }
 
-fn set_handler(signals: &[i32], handler: impl Fn(i32) + Send + 'static) -> std::io::Result<()> {
+fn set_handler(signals: &[i32], handler: impl Fn(i32) + Send + 'static) -> io::Result<()> {
     use signal_hook::*;
     let signals = iterator::Signals::new(signals)?;
     std::thread::spawn(move || signals.forever().for_each(handler));
@@ -31,12 +38,15 @@ fn main() {
     let opt = Opt::from_args();
     debug!("option: {:?}", opt);
 
-    let config = {
-        let mut config = gk::config::ServerConfig::default();
-        config.server_ip = opt.ipaddr;
-        config.server_port = opt.port;
-        config
-    };
+    let config = match opt.rulefile {
+        Some(ref path) => gk::ServerConfig::with_file(opt.ipaddr, opt.port, path),
+        None => Ok(gk::ServerConfig::new(
+            opt.ipaddr,
+            opt.port,
+            gk::ConnectRule::any(),
+        )),
+    }
+    .expect("server config");
 
     let (server, tx) = gk::server::Server::new(
         config,

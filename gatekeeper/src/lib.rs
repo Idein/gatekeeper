@@ -15,5 +15,7 @@ mod session;
 mod test;
 mod try_clone;
 
+pub use config::*;
+pub use model::model::*;
 pub use server::*;
 pub use server_command::*;
