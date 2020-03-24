@@ -11,27 +11,21 @@ use model::dao::*;
 use model::error::ErrorKind;
 use model::model::*;
 
-pub struct Session<C, D, S> {
+pub struct Session<D, S> {
     pub version: ProtocolVersion,
-    /// connection from client for auth method negotiation
-    pub src_conn: Option<C>,
-    pub src_addr: SocketAddr,
     pub dst_connector: D,
     pub authorizer: S,
     pub server_addr: SocketAddr,
     pub conn_rule: ConnectRule,
 }
 
-impl<C, D, S> Session<C, D, S>
+impl<D, S> Session<D, S>
 where
-    C: ByteStream + 'static,
     D: Connector,
     S: AuthService,
 {
     pub fn new(
         version: ProtocolVersion,
-        src_conn: C,
-        src_addr: SocketAddr,
         dst_connector: D,
         authorizer: S,
         server_addr: SocketAddr,
@@ -39,8 +33,6 @@ where
     ) -> Self {
         Self {
             version,
-            src_conn: Some(src_conn),
-            src_addr,
             dst_connector,
             authorizer,
             server_addr,
@@ -59,9 +51,12 @@ where
         }
     }
 
-    pub fn start(&mut self) -> std::result::Result<(), Error> {
+    pub fn start(
+        &mut self,
+        _addr: SocketAddr,
+        mut src_conn: impl ByteStream + 'static,
+    ) -> std::result::Result<(), Error> {
         let (src_conn, method) = {
-            let mut src_conn = self.src_conn.take().unwrap();
             let mut strm = ReadWriteStream::new(&mut src_conn);
             let candidates = strm.recv_method_candidates()?;
             trace!("candidates: {:?}", candidates);

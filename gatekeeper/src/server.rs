@@ -46,13 +46,17 @@ where
 }
 
 /// spawn a thread perform `Session.start`
-fn spawn_session<S, D, M>(mut session: Session<S, D, M>) -> thread::JoinHandle<Result<(), Error>>
+fn spawn_session<S, D, M>(
+    mut session: Session<D, M>,
+    addr: SocketAddr,
+    strm: S,
+) -> thread::JoinHandle<Result<(), Error>>
 where
     S: ByteStream + 'static,
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    thread::spawn(move || session.start())
+    thread::spawn(move || session.start(addr, strm))
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
@@ -103,14 +107,12 @@ where
                     info!("connect from: {}", addr);
                     let session = Session::new(
                         self.protocol_version,
-                        stream,
-                        addr,
                         self.connector.clone(),
                         NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
                     );
-                    spawn_session(session);
+                    spawn_session(session, addr, stream);
                 }
             }
         }
