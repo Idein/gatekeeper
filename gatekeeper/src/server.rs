@@ -1,13 +1,14 @@
+use std::net::TcpStream;
 use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 
 use log::*;
 
-use crate::acceptor::Binder;
+use crate::acceptor::{Binder, TcpBinder};
 use crate::auth_service::{AuthService, NoAuthService};
 use crate::byte_stream::ByteStream;
 use crate::config::ServerConfig;
-use crate::connector::Connector;
+use crate::connector::{Connector, TcpUdpConnector};
 use crate::error::Error;
 use crate::server_command::ServerCommand;
 use crate::session::Session;
@@ -54,13 +55,23 @@ where
     thread::spawn(move || session.start())
 }
 
+impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
+    pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
+        Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
+            config,
+            TcpBinder,
+            TcpUdpConnector,
+        )
+    }
+}
+
 impl<S, T, C> Server<S, T, C>
 where
     S: ByteStream + 'static,
     T: Binder<Stream = S>,
     C: Connector + Clone + 'static,
 {
-    pub fn new(
+    pub fn with_binder(
         config: ServerConfig,
         binder: T,
         connector: C,
