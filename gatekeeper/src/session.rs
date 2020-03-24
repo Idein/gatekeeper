@@ -64,31 +64,14 @@ where
         let conn_req = strm.recv_connect_request()?;
         debug!("connect request: {:?}", conn_req);
         let dst_conn = match &conn_req.command {
-            Command::Connect => {
-                if let Err(err) = check_rule(
-                    &self.conn_rule,
-                    conn_req.connect_to.clone(),
-                    L4Protocol::Tcp,
-                ) {
-                    // filter out request not sufficies the connection rule
-                    strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
-                    return Ok(());
-                }
-                match self
-                    .dst_connector
-                    .connect_byte_stream(conn_req.connect_to.clone())
-                {
-                    Ok(conn) => {
-                        strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
-                        conn
-                    }
-                    Err(err) => {
-                        error!("connect error: {:?}", err);
-                        strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
-                        return Err(err.into());
-                    }
-                }
-            }
+            Command::Connect => connect_to(
+                &self.dst_connector,
+                &mut strm,
+                &self.conn_rule,
+                self.server_addr.clone(),
+                conn_req.connect_to.clone(),
+                self.version,
+            )?,
             cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
                 debug!("command not supported: {:?}", cmd);
                 let not_supported: model::Error = ErrorKind::command_not_supported(*cmd).into();
@@ -101,6 +84,47 @@ where
 
         relay::spawn_relay(strm.into_inner(), dst_conn)?;
         Ok(())
+    }
+}
+
+fn connect_reply<R>(
+    version: ProtocolVersion,
+    addr: SocketAddr,
+    connect_result: Result<(), R>,
+) -> ConnectReply
+where
+    ConnectError: From<R>,
+{
+    ConnectReply {
+        version,
+        connect_result: connect_result.map_err(Into::into),
+        server_addr: addr.into(),
+    }
+}
+
+fn connect_to(
+    connector: impl Deref<Target = impl Connector>,
+    strm: &mut impl SocksStream,
+    rule: &ConnectRule,
+    server: SocketAddr,
+    addr: Address,
+    version: ProtocolVersion,
+) -> Result<impl ByteStream, model::Error> {
+    if let Err(err) = check_rule(rule, addr.clone(), L4Protocol::Tcp) {
+        // filter out request not sufficies the connection rule
+        strm.send_connect_reply(connect_reply(version, server, Err(err.kind().clone())))?;
+        return Err(err);
+    }
+    match connector.connect_byte_stream(addr) {
+        Ok(conn) => {
+            strm.send_connect_reply(connect_reply::<model::ErrorKind>(version, server, Ok(())))?;
+            Ok(conn)
+        }
+        Err(err) => {
+            error!("connect error: {:?}", err);
+            strm.send_connect_reply(connect_reply(version, server, Err(err.kind().clone())))?;
+            Err(err.into())
+        }
     }
 }
 
