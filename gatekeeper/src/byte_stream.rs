@@ -26,7 +26,7 @@ impl<S: ByteStream> ByteStream for Box<S> {
     }
 }
 
-pub type BoxedStream = Box<dyn ByteStream>;
+pub type BoxedStream<'a> = Box<dyn ByteStream + 'a>;
 
 #[cfg(test)]
 pub mod test {

@@ -14,6 +14,10 @@ jobs:
           name: Build Gatekeeper
           command: |
             cargo build --verbose
+      - run:
+          name: Unit Test
+          command: |
+            cargo test --verbose -- --nocapture
 
   integration_test:
     machine:

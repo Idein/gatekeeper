@@ -10,12 +10,16 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
+    #[fail(display = "config error")]
+    Config,
     #[fail(display = "auth error")]
     Auth,
     #[fail(display = "permission error")]
     Permission,
     #[fail(display = "not supported error")]
     NotSupported,
+    #[fail(display = "not allowed error")]
+    NotAllowed,
     #[fail(display = "unknown error")]
     Unknown,
 }
@@ -88,6 +92,7 @@ impl From<model::Error> for Error {
             K::PacketSizeLimitExceeded { .. } => err.context(ErrorKind::Io),
             K::AddressAlreadInUse { .. } => err.context(ErrorKind::Io),
             K::AddressNotAvailable { .. } => err.context(ErrorKind::Io),
+            K::ConnectionNotAllowed { .. } => err.context(ErrorKind::NotAllowed),
         };
         Error { inner: ctx }
     }

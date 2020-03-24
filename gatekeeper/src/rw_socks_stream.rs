@@ -248,6 +248,7 @@ where
 }
 
 /// Parse socks5 udp header expected for UDP_ASSOCIATE-d socket
+#[allow(dead_code)]
 pub fn read_datagram<'a>(buf: &'a [u8]) -> Result<model::UdpDatagram<'a>, model::Error> {
     let mut cur = io::Cursor::new(buf);
     let header = cur.read_udp()?;

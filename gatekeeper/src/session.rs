@@ -1,13 +1,10 @@
-use std::io;
-use std::thread::{self, JoinHandle};
-
 use log::*;
 
-use crate::auth_service::*;
-use crate::byte_stream::{BoxedStream, ByteStream};
+use crate::auth_service::AuthService;
+use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::error::Error;
-use crate::method_selector::MethodSelector;
+use crate::relay;
 use crate::rw_socks_stream::ReadWriteStream;
 
 use model::dao::*;
@@ -20,69 +17,34 @@ pub struct Session<C, D, S> {
     pub src_conn: Option<C>,
     pub src_addr: SocketAddr,
     pub dst_connector: D,
-    pub method_selector: S,
+    pub authorizer: S,
     pub server_addr: SocketAddr,
-}
-
-fn spawn_relay_half<S, D>(
-    name: &str,
-    mut src: S,
-    mut dst: D,
-) -> Result<JoinHandle<()>, model::Error>
-where
-    S: io::Read + Send + 'static,
-    D: io::Write + Send + 'static,
-{
-    info!("spawn_relay_half");
-    let name = name.to_owned();
-    thread::Builder::new()
-        .name(name.clone())
-        .spawn(move || {
-            info!("spawned: {}", name);
-            if let Err(err) = io::copy(&mut src, &mut dst) {
-                error!("relay ({}): {}", name, err);
-            }
-        })
-        .map_err(Into::into)
-}
-
-fn spawn_relay<R>(
-    client_conn: BoxedStream,
-    server_conn: R,
-) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error>
-where
-    R: ByteStream,
-{
-    info!("spawn_relay");
-    let (read_client, write_client) = client_conn.split()?;
-    let (read_server, write_server) = server_conn.split()?;
-    Ok((
-        spawn_relay_half("relay: outbound", read_client, write_server)?,
-        spawn_relay_half("relay: incoming", read_server, write_client)?,
-    ))
+    pub conn_rule: ConnectRule,
 }
 
 impl<C, D, S> Session<C, D, S>
 where
     C: ByteStream + 'static,
     D: Connector,
-    S: MethodSelector,
+    S: AuthService,
 {
     pub fn new(
         version: ProtocolVersion,
         src_conn: C,
         src_addr: SocketAddr,
         dst_connector: D,
-        method_selector: S,
+        authorizer: S,
         server_addr: SocketAddr,
+        conn_rule: ConnectRule,
     ) -> Self {
         Self {
             version,
             src_conn: Some(src_conn),
             src_addr,
             dst_connector,
-            method_selector,
+            authorizer,
             server_addr,
+            conn_rule,
         }
     }
 
@@ -104,16 +66,16 @@ where
             let candidates = strm.recv_method_candidates()?;
             trace!("candidates: {:?}", candidates);
 
-            let selection = self.method_selector.select(&candidates.method)?;
+            let selection = self.authorizer.select(&candidates.method)?;
             trace!("selection: {:?}", selection);
 
             match selection {
-                Some((method, auth)) => {
+                Some(method) => {
                     strm.send_method_selection(MethodSelection {
                         version: self.version,
                         method: method.clone(),
                     })?;
-                    (src_conn, auth)
+                    (src_conn, method)
                 }
                 None => {
                     // no acceptable method
@@ -126,13 +88,37 @@ where
             }
         };
 
-        let relay = method.auth(src_conn)?;
+        let relay = self.authorizer.authorize(method, src_conn)?;
 
         let mut strm = ReadWriteStream::new(relay);
         let conn_req = strm.recv_connect_request()?;
         debug!("connect request: {:?}", conn_req);
-        match &conn_req.command {
-            Command::Connect => {}
+        let dst_conn = match &conn_req.command {
+            Command::Connect => {
+                if let Err(err) = check_rule(
+                    &self.conn_rule,
+                    conn_req.connect_to.clone(),
+                    L4Protocol::Tcp,
+                ) {
+                    // filter out request not sufficies the connection rule
+                    strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                    return Ok(());
+                }
+                match self
+                    .dst_connector
+                    .connect_byte_stream(conn_req.connect_to.clone())
+                {
+                    Ok(conn) => {
+                        strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
+                        conn
+                    }
+                    Err(err) => {
+                        error!("connect error: {:?}", err);
+                        strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
+                        return Err(err.into());
+                    }
+                }
+            }
             cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
                 debug!("command not supported: {:?}", cmd);
                 let not_supported: model::Error = ErrorKind::command_not_supported(*cmd).into();
@@ -141,24 +127,19 @@ where
                 strm.send_connect_reply(rep)?;
                 return Err(not_supported.into());
             }
-        }
-
-        let dst_conn = match self
-            .dst_connector
-            .connect_byte_stream(conn_req.connect_to.clone())
-        {
-            Ok(conn) => {
-                strm.send_connect_reply(self.connect_reply::<model::ErrorKind>(Ok(())))?;
-                conn
-            }
-            Err(err) => {
-                error!("connect error: {:?}", err);
-                strm.send_connect_reply(self.connect_reply(Err(err.kind().clone())))?;
-                return Err(err.into());
-            }
         };
 
-        spawn_relay(strm.into_inner(), dst_conn)?;
+        relay::spawn_relay(strm.into_inner(), dst_conn)?;
         Ok(())
+    }
+}
+
+fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<(), model::Error> {
+    if rule.check(addr.clone(), proto) {
+        Ok(())
+    } else {
+        let err: model::Error = model::ErrorKind::connection_not_allowed(addr, proto).into();
+        error!("connection rule: {}", err);
+        Err(err)
     }
 }
