@@ -1,7 +1,9 @@
+use std::ops::Deref;
+
 use log::*;
 
 use crate::auth_service::AuthService;
-use crate::byte_stream::ByteStream;
+use crate::byte_stream::{BoxedStream, ByteStream};
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::relay;
@@ -51,39 +53,12 @@ where
         }
     }
 
-    pub fn start(
+    pub fn start<'a>(
         &mut self,
         _addr: SocketAddr,
-        mut src_conn: impl ByteStream + 'static,
+        src_conn: impl ByteStream + 'a,
     ) -> std::result::Result<(), Error> {
-        let (src_conn, method) = {
-            let mut strm = ReadWriteStream::new(&mut src_conn);
-            let candidates = strm.recv_method_candidates()?;
-            trace!("candidates: {:?}", candidates);
-
-            let selection = self.authorizer.select(&candidates.method)?;
-            trace!("selection: {:?}", selection);
-
-            match selection {
-                Some(method) => {
-                    strm.send_method_selection(MethodSelection {
-                        version: self.version,
-                        method: method.clone(),
-                    })?;
-                    (src_conn, method)
-                }
-                None => {
-                    // no acceptable method
-                    strm.send_method_selection(MethodSelection {
-                        version: self.version,
-                        method: Method::NoMethods,
-                    })?;
-                    return Err(model::Error::from(ErrorKind::NoAcceptableMethod).into());
-                }
-            }
-        };
-
-        let relay = self.authorizer.authorize(method, src_conn)?;
+        let relay = authorize(self.version, &self.authorizer, src_conn)?;
 
         let mut strm = ReadWriteStream::new(relay);
         let conn_req = strm.recv_connect_request()?;
@@ -126,6 +101,34 @@ where
 
         relay::spawn_relay(strm.into_inner(), dst_conn)?;
         Ok(())
+    }
+}
+
+fn authorize<'a>(
+    version: ProtocolVersion,
+    auth: impl Deref<Target = impl AuthService>,
+    mut src_conn: impl ByteStream + 'a,
+) -> Result<BoxedStream<'a>, model::Error> {
+    let mut strm = ReadWriteStream::new(&mut src_conn);
+    let candidates = strm.recv_method_candidates()?;
+    trace!("candidates: {:?}", candidates);
+
+    let selection = auth.select(&candidates.method)?;
+    trace!("selection: {:?}", selection);
+
+    match selection {
+        Some(method) => {
+            strm.send_method_selection(MethodSelection { version, method })?;
+            auth.authorize(method, src_conn)
+        }
+        None => {
+            // no acceptable method
+            strm.send_method_selection(MethodSelection {
+                version,
+                method: Method::NoMethods,
+            })?;
+            Err(ErrorKind::NoAcceptableMethod.into())
+        }
     }
 }
 
