@@ -1,9 +1,10 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
+use std::thread::JoinHandle;
 
 use log::*;
 
 use crate::auth_service::AuthService;
-use crate::byte_stream::{BoxedStream, ByteStream};
+use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::relay;
@@ -42,117 +43,100 @@ where
         }
     }
 
-    fn connect_reply<R>(&self, connect_result: Result<(), R>) -> ConnectReply
-    where
-        ConnectError: From<R>,
-    {
+    fn connect_reply(&self, connect_result: Result<(), ConnectError>) -> ConnectReply {
         ConnectReply {
             version: self.version,
-            connect_result: connect_result.map_err(Into::into),
+            connect_result,
             server_addr: self.server_addr.clone().into(),
         }
+    }
+
+    fn make_session<'a>(
+        &mut self,
+        mut src_conn: impl ByteStream + 'a,
+    ) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error> {
+        let mut socks = ReadWriteStream::new(&mut src_conn);
+
+        let select = negotiate_auth_method(self.version, &self.authorizer, &mut socks)?;
+        debug!("auth method: {:?}", select);
+        let mut socks = ReadWriteStream::new(self.authorizer.authorize(select.method, src_conn)?);
+
+        let req = socks.recv_connect_request()?;
+        debug!("connect request: {:?}", req);
+
+        let conn = match perform_command(
+            req.command,
+            &self.dst_connector,
+            &self.conn_rule,
+            req.connect_to.clone(),
+        ) {
+            Ok(conn) => {
+                info!("connected: {}", req.connect_to);
+                socks.send_connect_reply(self.connect_reply(Ok(())))?;
+                conn
+            }
+            Err(err) => {
+                error!("command error: {}", err);
+                trace!("command error: {:?}", err);
+                // reply error
+                socks.send_connect_reply(self.connect_reply(Err(err.cerr())))?;
+                Err(err)?
+            }
+        };
+
+        relay::spawn_relay(socks.into_inner(), conn)
     }
 
     pub fn start<'a>(
         &mut self,
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
-    ) -> std::result::Result<(), Error> {
-        let relay = authorize(self.version, &self.authorizer, src_conn)?;
-
-        let mut strm = ReadWriteStream::new(relay);
-        let conn_req = strm.recv_connect_request()?;
-        debug!("connect request: {:?}", conn_req);
-        let dst_conn = match &conn_req.command {
-            Command::Connect => connect_to(
-                &self.dst_connector,
-                &mut strm,
-                &self.conn_rule,
-                self.server_addr.clone(),
-                conn_req.connect_to.clone(),
-                self.version,
-            )?,
-            cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
-                debug!("command not supported: {:?}", cmd);
-                let not_supported: model::Error = ErrorKind::command_not_supported(*cmd).into();
-                // reply error
-                let rep = self.connect_reply(Err(not_supported.kind().clone()));
-                strm.send_connect_reply(rep)?;
-                return Err(not_supported.into());
-            }
-        };
-
-        relay::spawn_relay(strm.into_inner(), dst_conn)?;
+    ) -> Result<(), Error> {
+        if let Err(err) = self.make_session(src_conn) {
+            error!("session error: {}", err);
+            trace!("session error: {:?}", err);
+            return Err(err);
+        }
         Ok(())
     }
 }
 
-fn connect_reply<R>(
-    version: ProtocolVersion,
-    addr: SocketAddr,
-    connect_result: Result<(), R>,
-) -> ConnectReply
-where
-    ConnectError: From<R>,
-{
-    ConnectReply {
-        version,
-        connect_result: connect_result.map_err(Into::into),
-        server_addr: addr.into(),
-    }
-}
-
-fn connect_to(
+fn perform_command(
+    cmd: Command,
     connector: impl Deref<Target = impl Connector>,
-    strm: &mut impl SocksStream,
     rule: &ConnectRule,
-    server: SocketAddr,
-    addr: Address,
-    version: ProtocolVersion,
+    connect_to: Address,
 ) -> Result<impl ByteStream, model::Error> {
-    if let Err(err) = check_rule(rule, addr.clone(), L4Protocol::Tcp) {
-        // filter out request not sufficies the connection rule
-        strm.send_connect_reply(connect_reply(version, server, Err(err.kind().clone())))?;
-        return Err(err);
-    }
-    match connector.connect_byte_stream(addr) {
-        Ok(conn) => {
-            strm.send_connect_reply(connect_reply::<model::ErrorKind>(version, server, Ok(())))?;
-            Ok(conn)
+    match cmd {
+        Command::Connect => {}
+        cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
+            Err(ErrorKind::command_not_supported(cmd))?
         }
-        Err(err) => {
-            error!("connect error: {:?}", err);
-            strm.send_connect_reply(connect_reply(version, server, Err(err.kind().clone())))?;
-            Err(err.into())
-        }
-    }
+    };
+    // filter out request not sufficies the connection rule
+    check_rule(rule, connect_to.clone(), L4Protocol::Tcp)?;
+    connector.connect_byte_stream(connect_to)
 }
 
-fn authorize<'a>(
+fn negotiate_auth_method<'a>(
     version: ProtocolVersion,
     auth: impl Deref<Target = impl AuthService>,
-    mut src_conn: impl ByteStream + 'a,
-) -> Result<BoxedStream<'a>, model::Error> {
-    let mut strm = ReadWriteStream::new(&mut src_conn);
-    let candidates = strm.recv_method_candidates()?;
+    mut socks: impl DerefMut<Target = impl SocksStream>,
+) -> Result<MethodSelection, model::Error> {
+    let candidates = socks.recv_method_candidates()?;
     trace!("candidates: {:?}", candidates);
 
     let selection = auth.select(&candidates.method)?;
     trace!("selection: {:?}", selection);
 
-    match selection {
-        Some(method) => {
-            strm.send_method_selection(MethodSelection { version, method })?;
-            auth.authorize(method, src_conn)
-        }
-        None => {
-            // no acceptable method
-            strm.send_method_selection(MethodSelection {
-                version,
-                method: Method::NoMethods,
-            })?;
-            Err(ErrorKind::NoAcceptableMethod.into())
-        }
+    let method_sel = MethodSelection {
+        version,
+        method: selection.unwrap_or(Method::NoMethods),
+    };
+    socks.send_method_selection(method_sel)?;
+    match method_sel.method {
+        Method::NoMethods => Err(ErrorKind::NoAcceptableMethod.into()),
+        _ => Ok(method_sel),
     }
 }
 
@@ -160,8 +144,6 @@ fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<()
     if rule.check(addr.clone(), proto) {
         Ok(())
     } else {
-        let err: model::Error = model::ErrorKind::connection_not_allowed(addr, proto).into();
-        error!("connection rule: {}", err);
-        Err(err)
+        Err(model::ErrorKind::connection_not_allowed(addr, proto).into())
     }
 }
