@@ -149,7 +149,17 @@ where
         match addr {
             Addr::IpAddr(IpAddr::V4(addr)) => self.write_all(&addr.octets())?,
             Addr::IpAddr(IpAddr::V6(addr)) => self.write_all(&addr.octets())?,
-            Addr::Domain(domain) => self.write_all(&domain)?,
+            Addr::Domain(domain) => {
+                if domain.len() > 255 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("domain name is too long: {:?}", domain),
+                    )
+                    .into());
+                }
+                self.write_u8(domain.len() as u8)?;
+                self.write_all(&domain)?
+            }
         }
         Ok(())
     }
