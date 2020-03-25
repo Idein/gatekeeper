@@ -24,9 +24,11 @@ trait ReadSocksExt {
 trait WriteSocksExt {
     fn write_u8(&mut self, v: u8) -> Result<(), Error>;
     fn write_u16(&mut self, v: u16) -> Result<(), Error>;
+    fn write_cmd(&mut self, cmd: SockCommand) -> Result<(), Error>;
     fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error>;
     fn write_addr(&mut self, addr: &Addr) -> Result<(), Error>;
     fn write_version(&mut self, version: ProtocolVersion) -> Result<(), Error>;
+    fn write_methods(&mut self, nmethods: &[AuthMethods]) -> Result<(), Error>;
     fn write_rep(&mut self, rep: ResponseCode) -> Result<(), Error>;
     fn write_udp(&mut self, header: &UdpHeader) -> Result<(), Error>;
 }
@@ -141,6 +143,10 @@ where
         self.write_all(&v.to_be_bytes())?;
         Ok(())
     }
+    fn write_cmd(&mut self, cmd: SockCommand) -> Result<(), Error> {
+        self.write_all(slice::from_ref(&(cmd as u8)))?;
+        Ok(())
+    }
     fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error> {
         self.write_all(slice::from_ref(&(atyp as u8)))?;
         Ok(())
@@ -165,6 +171,13 @@ where
     }
     fn write_version(&mut self, version: ProtocolVersion) -> Result<(), Error> {
         self.write_all(slice::from_ref(&version.into()))?;
+        Ok(())
+    }
+    fn write_methods(&mut self, nmethods: &[AuthMethods]) -> Result<(), Error> {
+        let len = nmethods.len();
+        let methods: Vec<u8> = nmethods.into_iter().map(|m| m.code()).collect();
+        self.write_u8(len as u8)?;
+        self.write_all(methods.as_ref())?;
         Ok(())
     }
     fn write_rep(&mut self, rep: ResponseCode) -> Result<(), Error> {
@@ -319,9 +332,33 @@ where
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
     use crate::byte_stream::test::BufferStream;
+
+    pub fn write_method_candidates<T: io::Write>(
+        mut strm: T,
+        cand: &raw::MethodCandidates,
+    ) -> Result<(), Error> {
+        trace!("recv_method_candidates");
+        strm.write_version(cand.ver)?;
+        strm.write_methods(&cand.methods)?;
+        Ok(())
+    }
+
+    pub fn write_connect_request<T: io::Write>(
+        mut strm: T,
+        req: &raw::ConnectRequest,
+    ) -> Result<(), Error> {
+        trace!("recv_connect_request");
+        strm.write_version(req.ver)?;
+        strm.write_cmd(req.cmd)?;
+        strm.write_u8(req.rsv)?;
+        strm.write_atyp(req.atyp)?;
+        strm.write_addr(&req.dst_addr)?;
+        strm.write_u16(req.dst_port)?;
+        Ok(())
+    }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Prim {

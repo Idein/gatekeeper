@@ -14,6 +14,7 @@ use model::dao::*;
 use model::error::ErrorKind;
 use model::model::*;
 
+#[derive(Debug)]
 pub struct Session<D, S> {
     pub version: ProtocolVersion,
     pub dst_connector: D,
@@ -145,5 +146,81 @@ fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<()
         Ok(())
     } else {
         Err(model::ErrorKind::connection_not_allowed(addr, proto).into())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::auth_service::test::RejectService;
+    use crate::byte_stream::test::BufferStream;
+    use crate::connector::test::BufferConnector;
+    use crate::rw_socks_stream as socks;
+    use std::io;
+    use std::str::FromStr;
+
+    #[test]
+    fn no_acceptable_method() {
+        let req = ConnectRequest {
+            version: 5.into(),
+            command: Command::Connect,
+            connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
+        };
+        let mut session = Session::new(
+            5.into(),
+            BufferConnector {
+                addrs: vec![req.connect_to.clone()],
+                rd_buff: vec![],
+                wr_buff: vec![],
+            },
+            RejectService,
+            "0.0.0.0:1080".parse().unwrap(),
+            ConnectRule::any(),
+        );
+        println!("session: {:?}", session);
+        let mut src = BufferStream::new(vec![5, 1, 0].into(), vec![].into());
+        assert_eq!(
+            session.make_session(src).unwrap_err().kind(),
+            &ErrorKind::NoAcceptableMethod
+        );
+    }
+
+    #[test]
+    fn command_not_supported() {
+        use crate::auth_service::NoAuthService;
+        let mcand = MethodCandidates {
+            version: 5.into(),
+            method: vec![model::Method::NoAuth],
+        };
+        let req = ConnectRequest {
+            version: 5.into(),
+            // udp is not unsupported
+            command: Command::UdpAssociate,
+            connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
+        };
+        let mut session = Session::new(
+            5.into(),
+            BufferConnector {
+                addrs: vec![req.connect_to.clone()],
+                rd_buff: vec![],
+                wr_buff: vec![],
+            },
+            NoAuthService::new(),
+            "0.0.0.0:1080".parse().unwrap(),
+            ConnectRule::any(),
+        );
+        println!("session: {:?}", session);
+
+        let mut buff = {
+            let mut cursor = io::Cursor::new(vec![]);
+            socks::test::write_method_candidates(&mut cursor, &mcand.into()).unwrap();
+            socks::test::write_connect_request(&mut cursor, &req.into()).unwrap();
+            cursor.into_inner()
+        };
+        let mut src = BufferStream::new(buff.into(), vec![].into());
+        assert_eq!(
+            session.make_session(src).unwrap_err().kind(),
+            &ErrorKind::command_not_supported(Command::UdpAssociate)
+        );
     }
 }

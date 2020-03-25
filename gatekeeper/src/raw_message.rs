@@ -271,6 +271,17 @@ impl From<SockCommand> for model::Command {
     }
 }
 
+impl From<model::Command> for SockCommand {
+    fn from(cmd: model::Command) -> Self {
+        use SockCommand::*;
+        match cmd {
+            model::Command::Connect => Connect,
+            model::Command::Bind => Bind,
+            model::Command::UdpAssociate => UdpAssociate,
+        }
+    }
+}
+
 impl TryFrom<u8> for SockCommand {
     type Error = TryFromU8Error;
     /// Parse Byte to Command
@@ -298,6 +309,15 @@ impl From<MethodCandidates> for model::MethodCandidates {
         model::MethodCandidates {
             version: candidates.ver.into(),
             method: candidates.methods.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<model::MethodCandidates> for MethodCandidates {
+    fn from(candidates: model::MethodCandidates) -> Self {
+        MethodCandidates {
+            ver: candidates.version.into(),
+            methods: candidates.method.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -401,6 +421,29 @@ impl TryFrom<ConnectRequest> for model::ConnectRequest {
             command: req.cmd.into(),
             connect_to: dst,
         })
+    }
+}
+
+impl From<model::ConnectRequest> for ConnectRequest {
+    fn from(req: model::ConnectRequest) -> Self {
+        use model::Address as A;
+        let (atyp, dst_addr, dst_port) = match req.connect_to {
+            A::IpAddr(addr @ IpAddr::V4(_), port) => (AddrType::V4, Addr::IpAddr(addr), port),
+            A::IpAddr(addr @ IpAddr::V6(_), port) => (AddrType::V6, Addr::IpAddr(addr), port),
+            A::Domain(addr, port) => (
+                AddrType::Domain,
+                Addr::Domain(addr.as_bytes().to_vec()),
+                port,
+            ),
+        };
+        ConnectRequest {
+            ver: req.version.into(),
+            cmd: req.command.into(),
+            rsv: 0,
+            atyp,
+            dst_addr,
+            dst_port,
+        }
     }
 }
 

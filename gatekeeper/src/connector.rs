@@ -34,3 +34,51 @@ impl Connector for TcpUdpConnector {
         */
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::byte_stream::test::BufferStream;
+    use model::ErrorKind;
+
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct BufferConnector {
+        /// allowed addresses
+        pub addrs: Vec<Address>,
+        /// connected stream contents
+        pub rd_buff: Vec<u8>,
+        pub wr_buff: Vec<u8>,
+    }
+
+    impl Connector for BufferConnector {
+        type B = BufferStream;
+        type P = UdpPktStream;
+        fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
+            println!("connect_byte_stream: {:?}", &addr);
+            if self.addrs.contains(&addr) {
+                println!("rd_buff: {:?}", self.rd_buff);
+                Ok(BufferStream::new(
+                    (&self.rd_buff).into(),
+                    (&self.wr_buff).into(),
+                ))
+            } else {
+                use Address::*;
+                match addr {
+                    Domain(domain, port) => Err(ErrorKind::DomainNotResolved {
+                        domain: domain.into(),
+                        port,
+                    }
+                    .into()),
+                    IpAddr(ipaddr, port) => Err(ErrorKind::HostUnreachable {
+                        host: ipaddr.to_string(),
+                        port,
+                    }
+                    .into()),
+                }
+            }
+        }
+        fn connect_pkt_stream(&self, addr: Address) -> Result<Self::P, Error> {
+            unimplemented!("BufferConnector::connect_pkt_stream")
+        }
+    }
+}
