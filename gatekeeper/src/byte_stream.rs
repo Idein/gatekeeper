@@ -36,41 +36,44 @@ pub mod test {
 
     #[derive(Debug, Clone)]
     pub struct BufferStream {
-        cursor: Arc<Mutex<io::Cursor<Vec<u8>>>>,
+        rd_buff: Arc<Mutex<io::Cursor<Vec<u8>>>>,
+        wr_buff: Arc<Mutex<io::Cursor<Vec<u8>>>>,
     }
 
     impl BufferStream {
-        #[allow(unused)]
-        pub fn new(buffer: Cow<[u8]>) -> Self {
+        pub fn new(rd: Cow<[u8]>, wr: Cow<[u8]>) -> Self {
             Self {
-                cursor: Arc::new(Mutex::new(io::Cursor::new(buffer.into_owned()))),
+                rd_buff: Arc::new(Mutex::new(io::Cursor::new(rd.into_owned()))),
+                wr_buff: Arc::new(Mutex::new(io::Cursor::new(wr.into_owned()))),
             }
         }
     }
 
     impl io::Read for BufferStream {
         fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            self.cursor.lock().unwrap().read(buf)
+            self.rd_buff.lock().unwrap().read(buf)
         }
     }
 
     impl io::Write for BufferStream {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.cursor.lock().unwrap().write(buf)
+            self.wr_buff.lock().unwrap().write(buf)
         }
 
         fn flush(&mut self) -> io::Result<()> {
-            self.cursor.lock().unwrap().flush()
+            self.wr_buff.lock().unwrap().flush()
         }
     }
 
     impl ByteStream for BufferStream {
         fn split(&self) -> Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>), Error> {
             let rd = Self {
-                cursor: self.cursor.clone(),
+                rd_buff: self.rd_buff.clone(),
+                wr_buff: self.wr_buff.clone(),
             };
             let wr = Self {
-                cursor: self.cursor.clone(),
+                rd_buff: self.rd_buff.clone(),
+                wr_buff: self.wr_buff.clone(),
             };
             Ok((Box::new(rd), Box::new(wr)))
         }
