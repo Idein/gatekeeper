@@ -153,7 +153,7 @@ impl From<u8> for AuthMethods {
             0x02 => UserPass,
             0x03..=0x7F => IANAMethod(code),
             0x80..=0xFE => Private(code),
-            0xFF => NoAuth,
+            0xFF => NoMethods,
         }
     }
 }
