@@ -311,6 +311,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::byte_stream::test::BufferStream;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Prim {
@@ -363,7 +364,7 @@ mod test {
     }
 
     #[test]
-    fn test_byte_buff() {
+    fn read_write_ext() {
         let prim = Prim {
             fu8: 42,
             fu16: 32854,
@@ -393,5 +394,72 @@ mod test {
 
         println!("prim_: {:?}", prim_);
         assert_eq!(prim, prim_);
+    }
+
+    #[test]
+    fn buffer_stream() {
+        use model::dao::*;
+        use model::{Address, Command, ConnectRequest, Method};
+        let input = vec![
+            5, 1, 0, 5, 6, 0, 1, 2, 0x6a, 0xef, 0xff, 5, 1, 0, 1, 1, 2, 3, 4, 0, 5, 5, 1, 0, 3, 11,
+            b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'.', b'c', b'o', b'm', 0x7d, 0x6c, 5, 2, 0,
+            1, 0, 0, 0, 0, 0x1f, 0x90, 5, 3, 0, 3, 11, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            b'.', b'c', b'o', b'm', 0x7, 0xe4,
+        ];
+        let output = vec![];
+        let mut strm = ReadWriteStream::new(BufferStream::new(input.into(), output.into()));
+        assert_eq!(
+            strm.recv_method_candidates().unwrap(),
+            model::MethodCandidates {
+                version: 5.into(),
+                method: vec![model::Method::NoAuth]
+            }
+        );
+        assert_eq!(
+            strm.recv_method_candidates().unwrap(),
+            model::MethodCandidates {
+                version: 5.into(),
+                method: vec![
+                    Method::NoAuth,
+                    Method::GssApi,
+                    Method::UserPass,
+                    Method::IANAMethod(0x6a),
+                    Method::Private(0xef),
+                    Method::NoMethods
+                ]
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::Connect,
+                connect_to: "1.2.3.4:5".parse().unwrap(),
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::Connect,
+                connect_to: Address::Domain("example.com".into(), 32108),
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::Bind,
+                connect_to: "0.0.0.0:8080".parse().unwrap(),
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::UdpAssociate,
+                connect_to: Address::Domain("example.com".into(), 2020)
+            }
+        );
     }
 }
