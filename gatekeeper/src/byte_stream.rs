@@ -36,8 +36,8 @@ pub mod test {
 
     #[derive(Debug, Clone)]
     pub struct BufferStream {
-        rd_buff: Arc<Mutex<io::Cursor<Vec<u8>>>>,
-        wr_buff: Arc<Mutex<io::Cursor<Vec<u8>>>>,
+        pub rd_buff: Arc<Mutex<io::Cursor<Vec<u8>>>>,
+        pub wr_buff: Arc<Mutex<io::Cursor<Vec<u8>>>>,
     }
 
     impl BufferStream {

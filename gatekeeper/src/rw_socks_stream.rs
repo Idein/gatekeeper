@@ -409,15 +409,16 @@ mod test {
     #[test]
     fn buffer_stream() {
         use model::dao::*;
-        use model::{Address, Command, ConnectRequest, Method};
+        use model::{
+            Address, Command, ConnectError, ConnectReply, ConnectRequest, Method, MethodSelection,
+        };
         let input = vec![
             5, 1, 0, 5, 6, 0, 1, 2, 0x6a, 0xef, 0xff, 5, 1, 0, 1, 1, 2, 3, 4, 0, 5, 5, 1, 0, 3, 11,
             b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'.', b'c', b'o', b'm', 0x7d, 0x6c, 5, 2, 0,
             1, 0, 0, 0, 0, 0x1f, 0x90, 5, 3, 0, 3, 11, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
             b'.', b'c', b'o', b'm', 0x7, 0xe4,
         ];
-        let output = vec![];
-        let mut strm = ReadWriteStream::new(BufferStream::new(input.into(), output.into()));
+        let mut strm = ReadWriteStream::new(BufferStream::new((&input).into(), vec![].into()));
         assert_eq!(
             strm.recv_method_candidates().unwrap(),
             model::MethodCandidates {
@@ -470,6 +471,75 @@ mod test {
                 command: Command::UdpAssociate,
                 connect_to: Address::Domain("example.com".into(), 2020)
             }
+        );
+
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::NoAuth,
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::GssApi,
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::UserPass,
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::IANAMethod(0x7f),
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::Private(0xfe),
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::NoMethods,
+        })
+        .unwrap();
+        strm.send_connect_reply(ConnectReply {
+            version: 5.into(),
+            connect_result: Ok(()),
+            server_addr: "127.0.0.1:1080".parse().unwrap(),
+        })
+        .unwrap();
+        strm.send_connect_reply(ConnectReply {
+            version: 5.into(),
+            connect_result: Err(ConnectError::ServerFailure),
+            server_addr: Address::Domain("example.com".into(), 8335),
+        })
+        .unwrap();
+
+        let inner = strm.into_inner();
+        // consumed all bytes
+        assert_eq!(inner.rd_buff.lock().unwrap().position(), input.len() as u64);
+        let out_exp: Vec<u8> = [5, 0]
+            .iter()
+            .chain([5, 1].iter())
+            .chain([5, 2].iter())
+            .chain([5, 0x7f].iter())
+            .chain([5, 0xfe].iter())
+            .chain([5, 0xff].iter())
+            .chain([5, 0, 0, 1, 127, 0, 0, 1, 0x4, 0x38].iter())
+            .chain(
+                [
+                    5, 1, 0, 3, 11, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'.', b'c', b'o',
+                    b'm', 0x20, 0x8f,
+                ]
+                .iter(),
+            )
+            .cloned()
+            .collect();
+        assert_eq!(inner.wr_buff.lock().unwrap().clone().into_inner(), out_exp);
+        assert_eq!(
+            inner.wr_buff.lock().unwrap().position(),
+            out_exp.len() as u64
         );
     }
 }
