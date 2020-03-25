@@ -95,7 +95,7 @@ where
         if let Err(err) = self.make_session(src_conn) {
             error!("session error: {}", err);
             trace!("session error: {:?}", err);
-            return Err(err);
+            return Err(err.into());
         }
         Ok(())
     }
