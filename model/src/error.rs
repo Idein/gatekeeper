@@ -7,7 +7,7 @@ use crate::model::*;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-#[derive(Fail, Debug, Clone)]
+#[derive(Fail, Debug, Clone, PartialEq, Eq)]
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
