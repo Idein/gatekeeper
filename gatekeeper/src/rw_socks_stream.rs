@@ -15,6 +15,7 @@ trait ReadSocksExt {
     fn read_rsv(&mut self) -> Result<u8, Error>;
     fn read_version(&mut self) -> Result<ProtocolVersion, Error>;
     fn read_methods(&mut self, nmethod: usize) -> Result<Vec<AuthMethods>, Error>;
+    fn read_rep(&mut self) -> Result<ResponseCode, Error>;
     fn read_cmd(&mut self) -> Result<SockCommand, Error>;
     fn read_atyp(&mut self) -> Result<AddrType, Error>;
     fn read_addr(&mut self, atyp: AddrType) -> Result<Addr, Error>;
@@ -67,6 +68,11 @@ where
         let mut methods = vec![0u8; nmethod];
         self.read_exact(&mut methods)?;
         Ok(methods.into_iter().map(Into::into).collect())
+    }
+
+    fn read_rep(&mut self) -> Result<ResponseCode, Error> {
+        let rep = ResponseCode::from_u8(self.read_u8()?).context(ErrorKind::Io)?;
+        Ok(rep)
     }
 
     fn read_cmd(&mut self) -> Result<SockCommand, Error> {
@@ -338,19 +344,21 @@ pub mod test {
 
     pub fn write_method_candidates<T: io::Write>(
         mut strm: T,
-        cand: &raw::MethodCandidates,
+        cand: model::MethodCandidates,
     ) -> Result<(), Error> {
         trace!("recv_method_candidates");
+        let cand: raw::MethodCandidates = cand.into();
         strm.write_version(cand.ver)?;
-        strm.write_methods(&cand.methods)?;
+        strm.write_methods(cand.methods.as_ref())?;
         Ok(())
     }
 
     pub fn write_connect_request<T: io::Write>(
         mut strm: T,
-        req: &raw::ConnectRequest,
+        req: model::ConnectRequest,
     ) -> Result<(), Error> {
         trace!("recv_connect_request");
+        let req: raw::ConnectRequest = req.into();
         strm.write_version(req.ver)?;
         strm.write_cmd(req.cmd)?;
         strm.write_u8(req.rsv)?;
@@ -358,6 +366,35 @@ pub mod test {
         strm.write_addr(&req.dst_addr)?;
         strm.write_u16(req.dst_port)?;
         Ok(())
+    }
+
+    pub fn read_method_selection<T: io::Read>(
+        mut strm: T,
+    ) -> Result<model::MethodSelection, Error> {
+        trace!("read_method_selection");
+        let ver = strm.read_version()?;
+        let method = strm.read_u8()?.into();
+        Ok(raw::MethodSelection { ver, method }.into())
+    }
+
+    pub fn read_connect_reply<T: io::Read>(mut strm: T) -> Result<model::ConnectReply, Error> {
+        trace!("read_connect_reply");
+        let ver = strm.read_version()?;
+        let rep = strm.read_rep()?;
+        let rsv = strm.read_rsv()?;
+        let atyp = strm.read_atyp()?;
+        let bnd_addr = strm.read_addr(atyp)?;
+        let bnd_port = strm.read_u16()?;
+        raw::ConnectReply {
+            ver,
+            rep,
+            rsv,
+            atyp,
+            bnd_addr,
+            bnd_port,
+        }
+        .try_into()
+        .map_err(Into::into)
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
