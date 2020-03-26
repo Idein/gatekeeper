@@ -13,7 +13,6 @@ pub mod server;
 pub mod server_command;
 mod session;
 mod test;
-mod try_clone;
 
 pub use config::*;
 pub use model::model::*;
