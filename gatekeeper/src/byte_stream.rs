@@ -32,7 +32,7 @@ pub type BoxedStream<'a> = Box<dyn ByteStream + 'a>;
 pub mod test {
     use super::*;
     use std::borrow::Cow;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, MutexGuard};
 
     #[derive(Debug, Clone)]
     pub struct BufferStream {
@@ -46,6 +46,14 @@ pub mod test {
                 rd_buff: Arc::new(Mutex::new(io::Cursor::new(rd.into_owned()))),
                 wr_buff: Arc::new(Mutex::new(io::Cursor::new(wr.into_owned()))),
             }
+        }
+
+        pub fn rd_buff<'a>(&'a self) -> MutexGuard<'a, io::Cursor<Vec<u8>>> {
+            self.rd_buff.lock().unwrap()
+        }
+
+        pub fn wr_buff<'a>(&'a self) -> MutexGuard<'a, io::Cursor<Vec<u8>>> {
+            self.wr_buff.lock().unwrap()
         }
     }
 

@@ -156,7 +156,6 @@ mod test {
     use crate::byte_stream::test::BufferStream;
     use crate::connector::test::BufferConnector;
     use crate::rw_socks_stream as socks;
-    use std::convert::TryInto;
     use std::io;
     use std::str::FromStr;
 
@@ -169,10 +168,13 @@ mod test {
         };
         let mut session = Session::new(
             5.into(),
-            BufferConnector {
-                addrs: vec![req.connect_to.clone()],
-                rd_buff: vec![],
-                wr_buff: vec![],
+            BufferConnector::<BufferStream> {
+                strms: vec![(
+                    req.connect_to.clone(),
+                    BufferStream::new(vec![].into(), vec![].into()),
+                )]
+                .into_iter()
+                .collect(),
             },
             RejectService,
             "0.0.0.0:1080".parse().unwrap(),
@@ -201,10 +203,13 @@ mod test {
         };
         let mut session = Session::new(
             5.into(),
-            BufferConnector {
-                addrs: vec![req.connect_to.clone()],
-                rd_buff: vec![],
-                wr_buff: vec![],
+            BufferConnector::<BufferStream> {
+                strms: vec![(
+                    req.connect_to.clone(),
+                    BufferStream::new(vec![].into(), vec![].into()),
+                )]
+                .into_iter()
+                .collect(),
             },
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
@@ -225,24 +230,42 @@ mod test {
         );
     }
 
+    fn gen_random_vec(size: usize) -> Vec<u8> {
+        use rand::distributions::Standard;
+        use rand::{thread_rng, Rng};
+        let rng = thread_rng();
+        rng.sample_iter(Standard).take(size).collect()
+    }
+
+    fn vec_from_read<T: io::Read>(mut reader: T) -> Vec<u8> {
+        let mut buff = vec![];
+        reader.read_to_end(&mut buff).unwrap();
+        buff
+    }
+
     #[test]
     fn start_relay() {
         use crate::auth_service::NoAuthService;
+        use io::Write;
         let version: ProtocolVersion = 5.into();
-        let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let connect_to = Address::Domain("example.com".into(), 5123);
         let mut session = Session::new(
             version,
             BufferConnector {
-                addrs: vec![connect_to.clone()],
-                rd_buff: vec![],
-                wr_buff: vec![],
+                strms: vec![(
+                    connect_to.clone(),
+                    BufferStream::new(gen_random_vec(32).into(), vec![].into()),
+                )]
+                .into_iter()
+                .collect(),
             },
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
         );
-        println!("session: {:?}", session);
 
+        // length of SOCKS message (len MethodCandidates + len ConnectRequest)
+        let mut input_stream_pos = 0u64;
         let src = {
             // input from socks client
             let mut cursor = io::Cursor::new(vec![]);
@@ -260,10 +283,13 @@ mod test {
                     version,
                     // udp is not unsupported
                     command: Command::Connect,
-                    connect_to,
+                    connect_to: connect_to.clone(),
                 },
             )
             .unwrap();
+            input_stream_pos = cursor.position();
+            // binaries from client
+            cursor.write_all(&gen_random_vec(32)).unwrap();
             BufferStream::new(cursor.into_inner().into(), vec![].into())
         };
         // start relay
@@ -272,21 +298,42 @@ mod test {
         assert!(relay_out.join().is_ok());
         assert!(relay_in.join().is_ok());
 
-        // read output buffer from pos(0)
-        src.wr_buff.lock().unwrap().set_position(0);
+        {
+            // read output buffer from pos(0)
+            src.wr_buff().set_position(0);
+            assert_eq!(
+                socks::test::read_method_selection(&mut *src.wr_buff()).unwrap(),
+                MethodSelection {
+                    version,
+                    method: model::Method::NoAuth
+                }
+            );
+            assert_eq!(
+                socks::test::read_connect_reply(&mut *src.wr_buff()).unwrap(),
+                ConnectReply {
+                    version,
+                    connect_result: Ok(()),
+                    server_addr: Address::IpAddr("0.0.0.0".parse().unwrap(), 1080),
+                }
+            );
+        }
+        // client <-- target
+        assert_eq!(vec_from_read(&mut *src.wr_buff()), {
+            let mut rd_buff = session.dst_connector.stream(&connect_to).rd_buff();
+            rd_buff.set_position(0);
+            vec_from_read(&mut *rd_buff)
+        });
+        // client --> target
         assert_eq!(
-            socks::test::read_method_selection(&mut *src.wr_buff.lock().unwrap()).unwrap(),
-            MethodSelection {
-                version,
-                method: model::Method::NoAuth
-            }
-        );
-        assert_eq!(
-            socks::test::read_connect_reply(&mut *src.wr_buff.lock().unwrap()).unwrap(),
-            ConnectReply {
-                version,
-                connect_result: Ok(()),
-                server_addr: "0.0.0.0:1080".parse().unwrap(),
+            {
+                let mut rd_buff = src.rd_buff();
+                rd_buff.set_position(input_stream_pos);
+                vec_from_read(&mut *rd_buff)
+            },
+            {
+                let mut wr_buff = session.dst_connector.stream(&connect_to).wr_buff();
+                wr_buff.set_position(0);
+                vec_from_read(&mut *wr_buff)
             }
         );
     }

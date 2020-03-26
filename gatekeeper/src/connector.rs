@@ -38,29 +38,32 @@ impl Connector for TcpUdpConnector {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::byte_stream::test::BufferStream;
+    use crate::byte_stream::{test::BufferStream, ByteStream};
     use model::ErrorKind;
+    use std::collections::BTreeMap;
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-    pub struct BufferConnector {
-        /// allowed addresses
-        pub addrs: Vec<Address>,
-        /// connected stream contents
-        pub rd_buff: Vec<u8>,
-        pub wr_buff: Vec<u8>,
+    pub struct BufferConnector<S> {
+        pub strms: BTreeMap<Address, S>,
     }
 
-    impl Connector for BufferConnector {
-        type B = BufferStream;
+    impl<S> BufferConnector<S> {
+        pub fn stream(&self, addr: &Address) -> &S {
+            &self.strms[addr]
+        }
+    }
+
+    impl<S> Connector for BufferConnector<S>
+    where
+        S: ByteStream + Clone,
+    {
+        type B = S;
         type P = UdpPktStream;
         fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
             println!("connect_byte_stream: {:?}", &addr);
-            if self.addrs.contains(&addr) {
-                println!("rd_buff: {:?}", self.rd_buff);
-                Ok(BufferStream::new(
-                    (&self.rd_buff).into(),
-                    (&self.wr_buff).into(),
-                ))
+            if self.strms.contains_key(&addr) {
+                println!("collect buffer: {:?}", self.strms[&addr]);
+                Ok(self.strms[&addr].clone())
             } else {
                 use Address::*;
                 match addr {
