@@ -43,12 +43,29 @@ impl From<model::ConnectResult> for ResponseCode {
     }
 }
 
+impl From<ResponseCode> for model::ConnectResult {
+    fn from(res: ResponseCode) -> Self {
+        use model::ConnectError as CErr;
+        use ResponseCode::*;
+        match res {
+            Success => Ok(()),
+            Failure => Err(CErr::ServerFailure),
+            RuleFailure => Err(CErr::ConnectionNotAllowed),
+            NetworkUnreachable => Err(CErr::NetworkUnreachable),
+            HostUnreachable => Err(CErr::HostUnreachable),
+            ConnectionRefused => Err(CErr::ConnectionRefused),
+            TtlExpired => Err(CErr::TtlExpired),
+            CommandNotSupported => Err(CErr::CommandNotSupported),
+            AddrTypeNotSupported => Err(CErr::AddrTypeNotSupported),
+        }
+    }
+}
+
 impl ResponseCode {
     pub fn code(&self) -> u8 {
         *self as u8
     }
 
-    #[cfg(test)]
     pub fn from_u8(code: u8) -> Result<Self, TryFromU8Error> {
         match code {
             0 => Ok(ResponseCode::Success),
@@ -337,6 +354,15 @@ impl From<model::MethodSelection> for MethodSelection {
     }
 }
 
+impl From<MethodSelection> for model::MethodSelection {
+    fn from(select: MethodSelection) -> Self {
+        model::MethodSelection {
+            version: select.ver.into(),
+            method: select.method.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ConnectRequest {
     pub ver: ProtocolVersion,
@@ -455,6 +481,17 @@ pub struct ConnectReply {
     pub atyp: AddrType,
     pub bnd_addr: Addr,
     pub bnd_port: u16,
+}
+
+impl TryFrom<ConnectReply> for model::ConnectReply {
+    type Error = TryFromAddress;
+    fn try_from(rep: ConnectReply) -> Result<Self, Self::Error> {
+        Ok(model::ConnectReply {
+            version: rep.ver.into(),
+            connect_result: rep.rep.into(),
+            server_addr: AddrTriple::new(rep.atyp, rep.bnd_addr, rep.bnd_port).try_into()?,
+        })
+    }
 }
 
 impl From<model::ConnectReply> for ConnectReply {
