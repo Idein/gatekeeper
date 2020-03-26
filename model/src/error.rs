@@ -7,7 +7,7 @@ use crate::model::*;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-#[derive(Fail, Debug, Clone)]
+#[derive(Fail, Debug, Clone, PartialEq, Eq)]
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
@@ -79,6 +79,25 @@ impl Error {
 
     pub fn kind(&self) -> &ErrorKind {
         self.inner.get_context()
+    }
+
+    pub fn cerr(&self) -> ConnectError {
+        use ConnectError as CErr;
+        use ErrorKind as K;
+        match self.kind() {
+            K::Io => CErr::ServerFailure,
+            K::MessageFormat { .. } => CErr::ServerFailure,
+            K::Authentication => CErr::ConnectionNotAllowed,
+            K::NoAcceptableMethod => CErr::ConnectionNotAllowed,
+            K::UnrecognizedUsernamePassword => CErr::ConnectionNotAllowed,
+            K::CommandNotSupported { .. } => CErr::CommandNotSupported,
+            K::HostUnreachable { .. } => CErr::HostUnreachable,
+            K::DomainNotResolved { .. } => CErr::NetworkUnreachable,
+            K::PacketSizeLimitExceeded { .. } => CErr::ServerFailure,
+            K::AddressAlreadInUse { .. } => CErr::ServerFailure,
+            K::AddressNotAvailable { .. } => CErr::ServerFailure,
+            K::ConnectionNotAllowed { .. } => CErr::ConnectionNotAllowed,
+        }
     }
 }
 

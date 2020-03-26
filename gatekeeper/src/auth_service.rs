@@ -61,3 +61,30 @@ impl AuthService for NoAuthService {
         Ok(Box::new(conn))
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use model::ErrorKind;
+
+    #[derive(Debug)]
+    pub struct RejectService;
+
+    impl AuthService for RejectService {
+        fn select(&self, _candidates: &[Method]) -> Result<Option<Method>, Error> {
+            Ok(None)
+        }
+
+        fn supported(&self) -> &[Method] {
+            &[]
+        }
+
+        /// authentication then return Wrapped stream
+        fn authorize<'a, B>(&self, _method: Method, _conn: B) -> Result<BoxedStream<'a>, Error>
+        where
+            B: ByteStream + 'a,
+        {
+            Err(ErrorKind::Authentication.into())
+        }
+    }
+}

@@ -149,27 +149,6 @@ pub enum ConnectError {
     AddrTypeNotSupported,
 }
 
-impl From<crate::error::ErrorKind> for ConnectError {
-    fn from(err: crate::error::ErrorKind) -> Self {
-        use crate::error::ErrorKind as K;
-        use ConnectError as CErr;
-        match err {
-            K::Io => CErr::ServerFailure,
-            K::MessageFormat { .. } => CErr::ServerFailure,
-            K::Authentication => CErr::ConnectionNotAllowed,
-            K::NoAcceptableMethod => CErr::ConnectionNotAllowed,
-            K::UnrecognizedUsernamePassword => CErr::ConnectionNotAllowed,
-            K::CommandNotSupported { .. } => CErr::CommandNotSupported,
-            K::HostUnreachable { .. } => CErr::HostUnreachable,
-            K::DomainNotResolved { .. } => CErr::NetworkUnreachable,
-            K::PacketSizeLimitExceeded { .. } => CErr::ServerFailure,
-            K::AddressAlreadInUse { .. } => CErr::ServerFailure,
-            K::AddressNotAvailable { .. } => CErr::ServerFailure,
-            K::ConnectionNotAllowed { .. } => CErr::ConnectionNotAllowed,
-        }
-    }
-}
-
 impl std::error::Error for ConnectError {
     fn description(&self) -> &str {
         "ConnectError"

@@ -1,13 +1,14 @@
+use std::net::TcpStream;
 use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 
 use log::*;
 
-use crate::acceptor::Binder;
+use crate::acceptor::{Binder, TcpBinder};
 use crate::auth_service::{AuthService, NoAuthService};
 use crate::byte_stream::ByteStream;
 use crate::config::ServerConfig;
-use crate::connector::Connector;
+use crate::connector::{Connector, TcpUdpConnector};
 use crate::error::Error;
 use crate::server_command::ServerCommand;
 use crate::session::Session;
@@ -45,13 +46,27 @@ where
 }
 
 /// spawn a thread perform `Session.start`
-fn spawn_session<S, D, M>(mut session: Session<S, D, M>) -> thread::JoinHandle<Result<(), Error>>
+fn spawn_session<S, D, M>(
+    mut session: Session<D, M>,
+    addr: SocketAddr,
+    strm: S,
+) -> thread::JoinHandle<Result<(), Error>>
 where
     S: ByteStream + 'static,
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    thread::spawn(move || session.start())
+    thread::spawn(move || session.start(addr, strm))
+}
+
+impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
+    pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
+        Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
+            config,
+            TcpBinder,
+            TcpUdpConnector,
+        )
+    }
 }
 
 impl<S, T, C> Server<S, T, C>
@@ -60,7 +75,7 @@ where
     T: Binder<Stream = S>,
     C: Connector + Clone + 'static,
 {
-    pub fn new(
+    pub fn with_binder(
         config: ServerConfig,
         binder: T,
         connector: C,
@@ -92,14 +107,12 @@ where
                     info!("connect from: {}", addr);
                     let session = Session::new(
                         self.protocol_version,
-                        stream,
-                        addr,
                         self.connector.clone(),
                         NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
                     );
-                    spawn_session(session);
+                    spawn_session(session, addr, stream);
                 }
             }
         }
@@ -125,7 +138,7 @@ mod test {
     fn server_shutdown() {
         let config = ServerConfig::default();
 
-        let (server, tx) = Server::new(config, TcpBinder, TcpUdpConnector);
+        let (server, tx) = Server::with_binder(config, TcpBinder, TcpUdpConnector);
         let shutdown = Arc::new(Mutex::new(SystemTime::now()));
         let th = {
             let shutdown = shutdown.clone();
@@ -158,10 +171,13 @@ mod test {
     #[test]
     fn dummy_binder() {
         let binder = DummyBinder {
-            stream: BufferStream::new(Cow::from(b"dummy".to_vec())),
+            stream: BufferStream::new(
+                Cow::from(b"dummy read".to_vec()),
+                Cow::from(b"dummy write".to_vec()),
+            ),
             src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
-        let (server, tx) = Server::new(ServerConfig::default(), binder, TcpUdpConnector);
+        let (server, tx) = Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector);
         let th = thread::spawn(move || {
             server.serve().ok();
         });

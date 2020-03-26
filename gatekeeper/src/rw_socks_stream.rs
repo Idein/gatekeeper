@@ -15,6 +15,7 @@ trait ReadSocksExt {
     fn read_rsv(&mut self) -> Result<u8, Error>;
     fn read_version(&mut self) -> Result<ProtocolVersion, Error>;
     fn read_methods(&mut self, nmethod: usize) -> Result<Vec<AuthMethods>, Error>;
+    fn read_rep(&mut self) -> Result<ResponseCode, Error>;
     fn read_cmd(&mut self) -> Result<SockCommand, Error>;
     fn read_atyp(&mut self) -> Result<AddrType, Error>;
     fn read_addr(&mut self, atyp: AddrType) -> Result<Addr, Error>;
@@ -24,9 +25,11 @@ trait ReadSocksExt {
 trait WriteSocksExt {
     fn write_u8(&mut self, v: u8) -> Result<(), Error>;
     fn write_u16(&mut self, v: u16) -> Result<(), Error>;
+    fn write_cmd(&mut self, cmd: SockCommand) -> Result<(), Error>;
     fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error>;
     fn write_addr(&mut self, addr: &Addr) -> Result<(), Error>;
     fn write_version(&mut self, version: ProtocolVersion) -> Result<(), Error>;
+    fn write_methods(&mut self, nmethods: &[AuthMethods]) -> Result<(), Error>;
     fn write_rep(&mut self, rep: ResponseCode) -> Result<(), Error>;
     fn write_udp(&mut self, header: &UdpHeader) -> Result<(), Error>;
 }
@@ -65,6 +68,11 @@ where
         let mut methods = vec![0u8; nmethod];
         self.read_exact(&mut methods)?;
         Ok(methods.into_iter().map(Into::into).collect())
+    }
+
+    fn read_rep(&mut self) -> Result<ResponseCode, Error> {
+        let rep = ResponseCode::from_u8(self.read_u8()?).context(ErrorKind::Io)?;
+        Ok(rep)
     }
 
     fn read_cmd(&mut self) -> Result<SockCommand, Error> {
@@ -141,6 +149,10 @@ where
         self.write_all(&v.to_be_bytes())?;
         Ok(())
     }
+    fn write_cmd(&mut self, cmd: SockCommand) -> Result<(), Error> {
+        self.write_all(slice::from_ref(&(cmd as u8)))?;
+        Ok(())
+    }
     fn write_atyp(&mut self, atyp: AddrType) -> Result<(), Error> {
         self.write_all(slice::from_ref(&(atyp as u8)))?;
         Ok(())
@@ -149,12 +161,29 @@ where
         match addr {
             Addr::IpAddr(IpAddr::V4(addr)) => self.write_all(&addr.octets())?,
             Addr::IpAddr(IpAddr::V6(addr)) => self.write_all(&addr.octets())?,
-            Addr::Domain(domain) => self.write_all(&domain)?,
+            Addr::Domain(domain) => {
+                if domain.len() > 255 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("domain name is too long: {:?}", domain),
+                    )
+                    .into());
+                }
+                self.write_u8(domain.len() as u8)?;
+                self.write_all(&domain)?
+            }
         }
         Ok(())
     }
     fn write_version(&mut self, version: ProtocolVersion) -> Result<(), Error> {
         self.write_all(slice::from_ref(&version.into()))?;
+        Ok(())
+    }
+    fn write_methods(&mut self, nmethods: &[AuthMethods]) -> Result<(), Error> {
+        let len = nmethods.len();
+        let methods: Vec<u8> = nmethods.into_iter().map(|m| m.code()).collect();
+        self.write_u8(len as u8)?;
+        self.write_all(methods.as_ref())?;
         Ok(())
     }
     fn write_rep(&mut self, rep: ResponseCode) -> Result<(), Error> {
@@ -309,8 +338,64 @@ where
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
+    use crate::byte_stream::test::BufferStream;
+
+    pub fn write_method_candidates<T: io::Write>(
+        mut strm: T,
+        cand: model::MethodCandidates,
+    ) -> Result<(), Error> {
+        trace!("recv_method_candidates");
+        let cand: raw::MethodCandidates = cand.into();
+        strm.write_version(cand.ver)?;
+        strm.write_methods(cand.methods.as_ref())?;
+        Ok(())
+    }
+
+    pub fn write_connect_request<T: io::Write>(
+        mut strm: T,
+        req: model::ConnectRequest,
+    ) -> Result<(), Error> {
+        trace!("recv_connect_request");
+        let req: raw::ConnectRequest = req.into();
+        strm.write_version(req.ver)?;
+        strm.write_cmd(req.cmd)?;
+        strm.write_u8(req.rsv)?;
+        strm.write_atyp(req.atyp)?;
+        strm.write_addr(&req.dst_addr)?;
+        strm.write_u16(req.dst_port)?;
+        Ok(())
+    }
+
+    pub fn read_method_selection<T: io::Read>(
+        mut strm: T,
+    ) -> Result<model::MethodSelection, Error> {
+        trace!("read_method_selection");
+        let ver = strm.read_version()?;
+        let method = strm.read_u8()?.into();
+        Ok(raw::MethodSelection { ver, method }.into())
+    }
+
+    pub fn read_connect_reply<T: io::Read>(mut strm: T) -> Result<model::ConnectReply, Error> {
+        trace!("read_connect_reply");
+        let ver = strm.read_version()?;
+        let rep = strm.read_rep()?;
+        let rsv = strm.read_rsv()?;
+        let atyp = strm.read_atyp()?;
+        let bnd_addr = strm.read_addr(atyp)?;
+        let bnd_port = strm.read_u16()?;
+        raw::ConnectReply {
+            ver,
+            rep,
+            rsv,
+            atyp,
+            bnd_addr,
+            bnd_port,
+        }
+        .try_into()
+        .map_err(Into::into)
+    }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Prim {
@@ -363,7 +448,7 @@ mod test {
     }
 
     #[test]
-    fn test_byte_buff() {
+    fn read_write_ext() {
         let prim = Prim {
             fu8: 42,
             fu16: 32854,
@@ -393,5 +478,142 @@ mod test {
 
         println!("prim_: {:?}", prim_);
         assert_eq!(prim, prim_);
+    }
+
+    #[test]
+    fn buffer_stream() {
+        use model::dao::*;
+        use model::{
+            Address, Command, ConnectError, ConnectReply, ConnectRequest, Method, MethodSelection,
+        };
+        let input = vec![
+            5, 1, 0, 5, 6, 0, 1, 2, 0x6a, 0xef, 0xff, 5, 1, 0, 1, 1, 2, 3, 4, 0, 5, 5, 1, 0, 3, 11,
+            b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'.', b'c', b'o', b'm', 0x7d, 0x6c, 5, 2, 0,
+            1, 0, 0, 0, 0, 0x1f, 0x90, 5, 3, 0, 3, 11, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
+            b'.', b'c', b'o', b'm', 0x7, 0xe4,
+        ];
+        let mut strm = ReadWriteStream::new(BufferStream::new((&input).into(), vec![].into()));
+        assert_eq!(
+            strm.recv_method_candidates().unwrap(),
+            model::MethodCandidates {
+                version: 5.into(),
+                method: vec![model::Method::NoAuth]
+            }
+        );
+        assert_eq!(
+            strm.recv_method_candidates().unwrap(),
+            model::MethodCandidates {
+                version: 5.into(),
+                method: vec![
+                    Method::NoAuth,
+                    Method::GssApi,
+                    Method::UserPass,
+                    Method::IANAMethod(0x6a),
+                    Method::Private(0xef),
+                    Method::NoMethods
+                ]
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::Connect,
+                connect_to: "1.2.3.4:5".parse().unwrap(),
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::Connect,
+                connect_to: Address::Domain("example.com".into(), 32108),
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::Bind,
+                connect_to: "0.0.0.0:8080".parse().unwrap(),
+            }
+        );
+        assert_eq!(
+            strm.recv_connect_request().unwrap(),
+            ConnectRequest {
+                version: 5.into(),
+                command: Command::UdpAssociate,
+                connect_to: Address::Domain("example.com".into(), 2020)
+            }
+        );
+
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::NoAuth,
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::GssApi,
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::UserPass,
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::IANAMethod(0x7f),
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::Private(0xfe),
+        })
+        .unwrap();
+        strm.send_method_selection(MethodSelection {
+            version: 5.into(),
+            method: Method::NoMethods,
+        })
+        .unwrap();
+        strm.send_connect_reply(ConnectReply {
+            version: 5.into(),
+            connect_result: Ok(()),
+            server_addr: "127.0.0.1:1080".parse().unwrap(),
+        })
+        .unwrap();
+        strm.send_connect_reply(ConnectReply {
+            version: 5.into(),
+            connect_result: Err(ConnectError::ServerFailure),
+            server_addr: Address::Domain("example.com".into(), 8335),
+        })
+        .unwrap();
+
+        let inner = strm.into_inner();
+        // consumed all bytes
+        assert_eq!(inner.rd_buff.lock().unwrap().position(), input.len() as u64);
+        let out_exp: Vec<u8> = [5, 0]
+            .iter()
+            .chain([5, 1].iter())
+            .chain([5, 2].iter())
+            .chain([5, 0x7f].iter())
+            .chain([5, 0xfe].iter())
+            .chain([5, 0xff].iter())
+            .chain([5, 0, 0, 1, 127, 0, 0, 1, 0x4, 0x38].iter())
+            .chain(
+                [
+                    5, 1, 0, 3, 11, b'e', b'x', b'a', b'm', b'p', b'l', b'e', b'.', b'c', b'o',
+                    b'm', 0x20, 0x8f,
+                ]
+                .iter(),
+            )
+            .cloned()
+            .collect();
+        assert_eq!(inner.wr_buff.lock().unwrap().clone().into_inner(), out_exp);
+        assert_eq!(
+            inner.wr_buff.lock().unwrap().position(),
+            out_exp.len() as u64
+        );
     }
 }

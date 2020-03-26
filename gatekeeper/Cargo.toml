@@ -23,6 +23,7 @@ net2 = "0.2.32"
 signal-hook = "0.1.13"
 model = { path = "../model" }
 serde_yaml = "0.8"
+rand = "0.7.3"
 
 [dev-dependencies]
 socks = "0.3.2"

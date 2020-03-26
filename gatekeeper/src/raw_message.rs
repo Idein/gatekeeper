@@ -43,12 +43,29 @@ impl From<model::ConnectResult> for ResponseCode {
     }
 }
 
+impl From<ResponseCode> for model::ConnectResult {
+    fn from(res: ResponseCode) -> Self {
+        use model::ConnectError as CErr;
+        use ResponseCode::*;
+        match res {
+            Success => Ok(()),
+            Failure => Err(CErr::ServerFailure),
+            RuleFailure => Err(CErr::ConnectionNotAllowed),
+            NetworkUnreachable => Err(CErr::NetworkUnreachable),
+            HostUnreachable => Err(CErr::HostUnreachable),
+            ConnectionRefused => Err(CErr::ConnectionRefused),
+            TtlExpired => Err(CErr::TtlExpired),
+            CommandNotSupported => Err(CErr::CommandNotSupported),
+            AddrTypeNotSupported => Err(CErr::AddrTypeNotSupported),
+        }
+    }
+}
+
 impl ResponseCode {
     pub fn code(&self) -> u8 {
         *self as u8
     }
 
-    #[cfg(test)]
     pub fn from_u8(code: u8) -> Result<Self, TryFromU8Error> {
         match code {
             0 => Ok(ResponseCode::Success),
@@ -153,7 +170,7 @@ impl From<u8> for AuthMethods {
             0x02 => UserPass,
             0x03..=0x7F => IANAMethod(code),
             0x80..=0xFE => Private(code),
-            0xFF => NoAuth,
+            0xFF => NoMethods,
         }
     }
 }
@@ -271,6 +288,17 @@ impl From<SockCommand> for model::Command {
     }
 }
 
+impl From<model::Command> for SockCommand {
+    fn from(cmd: model::Command) -> Self {
+        use SockCommand::*;
+        match cmd {
+            model::Command::Connect => Connect,
+            model::Command::Bind => Bind,
+            model::Command::UdpAssociate => UdpAssociate,
+        }
+    }
+}
+
 impl TryFrom<u8> for SockCommand {
     type Error = TryFromU8Error;
     /// Parse Byte to Command
@@ -302,6 +330,15 @@ impl From<MethodCandidates> for model::MethodCandidates {
     }
 }
 
+impl From<model::MethodCandidates> for MethodCandidates {
+    fn from(candidates: model::MethodCandidates) -> Self {
+        MethodCandidates {
+            ver: candidates.version.into(),
+            methods: candidates.method.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MethodSelection {
     pub ver: ProtocolVersion,
@@ -312,6 +349,15 @@ impl From<model::MethodSelection> for MethodSelection {
     fn from(select: model::MethodSelection) -> Self {
         MethodSelection {
             ver: select.version.into(),
+            method: select.method.into(),
+        }
+    }
+}
+
+impl From<MethodSelection> for model::MethodSelection {
+    fn from(select: MethodSelection) -> Self {
+        model::MethodSelection {
+            version: select.ver.into(),
             method: select.method.into(),
         }
     }
@@ -404,6 +450,29 @@ impl TryFrom<ConnectRequest> for model::ConnectRequest {
     }
 }
 
+impl From<model::ConnectRequest> for ConnectRequest {
+    fn from(req: model::ConnectRequest) -> Self {
+        use model::Address as A;
+        let (atyp, dst_addr, dst_port) = match req.connect_to {
+            A::IpAddr(addr @ IpAddr::V4(_), port) => (AddrType::V4, Addr::IpAddr(addr), port),
+            A::IpAddr(addr @ IpAddr::V6(_), port) => (AddrType::V6, Addr::IpAddr(addr), port),
+            A::Domain(addr, port) => (
+                AddrType::Domain,
+                Addr::Domain(addr.as_bytes().to_vec()),
+                port,
+            ),
+        };
+        ConnectRequest {
+            ver: req.version.into(),
+            cmd: req.command.into(),
+            rsv: 0,
+            atyp,
+            dst_addr,
+            dst_port,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ConnectReply {
     pub ver: ProtocolVersion,
@@ -412,6 +481,17 @@ pub struct ConnectReply {
     pub atyp: AddrType,
     pub bnd_addr: Addr,
     pub bnd_port: u16,
+}
+
+impl TryFrom<ConnectReply> for model::ConnectReply {
+    type Error = TryFromAddress;
+    fn try_from(rep: ConnectReply) -> Result<Self, Self::Error> {
+        Ok(model::ConnectReply {
+            version: rep.ver.into(),
+            connect_result: rep.rep.into(),
+            server_addr: AddrTriple::new(rep.atyp, rep.bnd_addr, rep.bnd_port).try_into()?,
+        })
+    }
 }
 
 impl From<model::ConnectReply> for ConnectReply {
