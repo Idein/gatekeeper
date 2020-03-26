@@ -156,6 +156,7 @@ mod test {
     use crate::byte_stream::test::BufferStream;
     use crate::connector::test::BufferConnector;
     use crate::rw_socks_stream as socks;
+    use std::convert::TryInto;
     use std::io;
     use std::str::FromStr;
 
@@ -178,7 +179,7 @@ mod test {
             ConnectRule::any(),
         );
         println!("session: {:?}", session);
-        let mut src = BufferStream::new(vec![5, 1, 0].into(), vec![].into());
+        let src = BufferStream::new(vec![5, 1, 0].into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::NoAcceptableMethod
@@ -211,16 +212,82 @@ mod test {
         );
         println!("session: {:?}", session);
 
-        let mut buff = {
+        let buff = {
             let mut cursor = io::Cursor::new(vec![]);
-            socks::test::write_method_candidates(&mut cursor, &mcand.into()).unwrap();
-            socks::test::write_connect_request(&mut cursor, &req.into()).unwrap();
+            socks::test::write_method_candidates(&mut cursor, mcand).unwrap();
+            socks::test::write_connect_request(&mut cursor, req).unwrap();
             cursor.into_inner()
         };
-        let mut src = BufferStream::new(buff.into(), vec![].into());
+        let src = BufferStream::new(buff.into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::command_not_supported(Command::UdpAssociate)
+        );
+    }
+
+    #[test]
+    fn start_relay() {
+        use crate::auth_service::NoAuthService;
+        let version: ProtocolVersion = 5.into();
+        let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let mut session = Session::new(
+            version,
+            BufferConnector {
+                addrs: vec![connect_to.clone()],
+                rd_buff: vec![],
+                wr_buff: vec![],
+            },
+            NoAuthService::new(),
+            "0.0.0.0:1080".parse().unwrap(),
+            ConnectRule::any(),
+        );
+        println!("session: {:?}", session);
+
+        let src = {
+            // input from socks client
+            let mut cursor = io::Cursor::new(vec![]);
+            socks::test::write_method_candidates(
+                &mut cursor,
+                MethodCandidates {
+                    version,
+                    method: vec![model::Method::NoAuth],
+                },
+            )
+            .unwrap();
+            socks::test::write_connect_request(
+                &mut cursor,
+                ConnectRequest {
+                    version,
+                    // udp is not unsupported
+                    command: Command::Connect,
+                    connect_to,
+                },
+            )
+            .unwrap();
+            BufferStream::new(cursor.into_inner().into(), vec![].into())
+        };
+        // start relay
+        let (relay_out, relay_in) = session.make_session(src.clone()).unwrap();
+        // join relay
+        assert!(relay_out.join().is_ok());
+        assert!(relay_in.join().is_ok());
+
+        // read output buffer from pos(0)
+        src.wr_buff.lock().unwrap().set_position(0);
+        assert_eq!(
+            socks::test::read_method_selection(&mut *src.wr_buff.lock().unwrap()).unwrap(),
+            MethodSelection {
+                version,
+                method: model::Method::NoAuth
+            }
+        );
+        assert_eq!(
+            socks::test::read_connect_reply(&mut *src.wr_buff.lock().unwrap()).unwrap(),
+            ConnectReply {
+                version,
+                connect_result: Ok(()),
+                server_addr: "0.0.0.0:1080".parse().unwrap(),
+            }
         );
     }
 }
