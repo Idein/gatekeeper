@@ -38,7 +38,7 @@ impl Connector for TcpUdpConnector {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::byte_stream::{test::BufferStream, ByteStream};
+    use crate::byte_stream::ByteStream;
     use model::ErrorKind;
     use std::collections::BTreeMap;
 
@@ -80,7 +80,7 @@ pub mod test {
                 }
             }
         }
-        fn connect_pkt_stream(&self, addr: Address) -> Result<Self::P, Error> {
+        fn connect_pkt_stream(&self, _addr: Address) -> Result<Self::P, Error> {
             unimplemented!("BufferConnector::connect_pkt_stream")
         }
     }

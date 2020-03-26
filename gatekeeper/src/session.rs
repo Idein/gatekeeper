@@ -265,7 +265,7 @@ mod test {
         );
 
         // length of SOCKS message (len MethodCandidates + len ConnectRequest)
-        let mut input_stream_pos = 0u64;
+        let input_stream_pos;
         let src = {
             // input from socks client
             let mut cursor = io::Cursor::new(vec![]);

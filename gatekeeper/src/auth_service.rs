@@ -71,7 +71,7 @@ pub mod test {
     pub struct RejectService;
 
     impl AuthService for RejectService {
-        fn select(&self, candidates: &[Method]) -> Result<Option<Method>, Error> {
+        fn select(&self, _candidates: &[Method]) -> Result<Option<Method>, Error> {
             Ok(None)
         }
 
@@ -80,7 +80,7 @@ pub mod test {
         }
 
         /// authentication then return Wrapped stream
-        fn authorize<'a, B>(&self, method: Method, conn: B) -> Result<BoxedStream<'a>, Error>
+        fn authorize<'a, B>(&self, _method: Method, _conn: B) -> Result<BoxedStream<'a>, Error>
         where
             B: ByteStream + 'a,
         {
