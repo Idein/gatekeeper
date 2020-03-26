@@ -244,7 +244,7 @@ mod test {
     }
 
     #[test]
-    fn start_relay() {
+    fn relay_contents() {
         use crate::auth_service::NoAuthService;
         use io::Write;
         let version: ProtocolVersion = 5.into();
@@ -294,10 +294,10 @@ mod test {
         };
         // start relay
         let (relay_out, relay_in) = session.make_session(src.clone()).unwrap();
-        // join relay
         assert!(relay_out.join().is_ok());
         assert!(relay_in.join().is_ok());
 
+        // check for replied command from Session to client
         {
             // read output buffer from pos(0)
             src.wr_buff().set_position(0);
@@ -317,6 +317,8 @@ mod test {
                 }
             );
         }
+
+        // check for relayed contents
         // client <-- target
         assert_eq!(vec_from_read(&mut *src.wr_buff()), {
             let mut rd_buff = session.dst_connector.stream(&connect_to).rd_buff();
