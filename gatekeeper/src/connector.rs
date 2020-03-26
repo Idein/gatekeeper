@@ -62,7 +62,6 @@ pub mod test {
         fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
             println!("connect_byte_stream: {:?}", &addr);
             if self.strms.contains_key(&addr) {
-                println!("collect buffer: {:?}", self.strms[&addr]);
                 Ok(self.strms[&addr].clone())
             } else {
                 use Address::*;

@@ -303,7 +303,7 @@ mod test {
             BufferConnector {
                 strms: vec![(
                     connect_to.clone(),
-                    BufferStream::new(gen_random_vec(32).into(), vec![].into()),
+                    BufferStream::new(gen_random_vec(8200).into(), vec![].into()),
                 )]
                 .into_iter()
                 .collect(),
@@ -338,7 +338,7 @@ mod test {
             .unwrap();
             input_stream_pos = cursor.position();
             // binaries from client
-            cursor.write_all(&gen_random_vec(32)).unwrap();
+            cursor.write_all(&gen_random_vec(8200)).unwrap();
             BufferStream::new(cursor.into_inner().into(), vec![].into())
         };
         // start relay
