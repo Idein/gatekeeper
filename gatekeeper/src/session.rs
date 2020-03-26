@@ -230,6 +230,55 @@ mod test {
         );
     }
 
+    #[test]
+    fn connect_not_allowed() {
+        use crate::auth_service::NoAuthService;
+        let version: ProtocolVersion = 5.into();
+        let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let mut session = Session::new(
+            version,
+            BufferConnector::<BufferStream> {
+                strms: vec![(
+                    connect_to.clone(),
+                    BufferStream::new(vec![].into(), vec![].into()),
+                )]
+                .into_iter()
+                .collect(),
+            },
+            NoAuthService::new(),
+            "0.0.0.0:1080".parse().unwrap(),
+            ConnectRule::none(),
+        );
+        println!("session: {:?}", session);
+
+        let buff = {
+            let mut cursor = io::Cursor::new(vec![]);
+            socks::test::write_method_candidates(
+                &mut cursor,
+                MethodCandidates {
+                    version,
+                    method: vec![model::Method::NoAuth],
+                },
+            )
+            .unwrap();
+            socks::test::write_connect_request(
+                &mut cursor,
+                ConnectRequest {
+                    version,
+                    command: Command::Connect,
+                    connect_to: connect_to.clone(),
+                },
+            )
+            .unwrap();
+            cursor.into_inner()
+        };
+        let src = BufferStream::new(buff.into(), vec![].into());
+        assert_eq!(
+            session.make_session(src).unwrap_err().kind(),
+            &ErrorKind::connection_not_allowed(connect_to, L4Protocol::Tcp)
+        );
+    }
+
     fn gen_random_vec(size: usize) -> Vec<u8> {
         use rand::distributions::Standard;
         use rand::{thread_rng, Rng};
