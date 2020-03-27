@@ -1,7 +1,7 @@
 # Gatekeeper: A [SOCKS5] Server written in Rust.
 
 [![CircleCI](https://circleci.com/gh/Idein/gatekeeper.svg?style=svg)](https://circleci.com/gh/Idein/gatekeeper)
-
+[![License](https://img.shields.io/crates/l/gatekeeper.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## Features
 ### Authentication Method
@@ -220,7 +220,6 @@ $ docker-compose up -d
 ```
 $ cargo test --verbose -- --nocapture --ignored
 ```
-
 
 
 [SOCKS5]: ftp://ftp.rfc-editor.org/in-notes/rfc1928.txt "SOCKS Protocol Version 5"

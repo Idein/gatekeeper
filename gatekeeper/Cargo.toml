@@ -3,6 +3,8 @@ name = "gatekeeper"
 version = "0.1.0"
 authors = ["eldesh <nephits@gmail.com>"]
 edition = "2018"
+license = "Apache-2.0"
+license-file = "../LICENSE"
 
 [lib]
 name = "gatekeeper"
