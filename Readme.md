@@ -206,6 +206,21 @@ Value of these fields are either `Any` or `Specif`.
           Specif: Tcp
     ```
 
+## Integration Test
+
+1. Prepare the socks and http server
+
+```
+$ docker-compose build
+$ docker-compose up -d
+```
+
+2. Run `ignored` test
+
+```
+$ cargo test --verbose -- --nocapture --ignored
+```
+
 
 
 [SOCKS5]: ftp://ftp.rfc-editor.org/in-notes/rfc1928.txt "SOCKS Protocol Version 5"
