@@ -98,7 +98,7 @@ Or
 
 
 All `RuleEntry` have 3 fields `address`, `port` and `protocol`.
-These fields is either `Any` or `Specif`.
+Value of these fields are either `Any` or `Specif`.
 `Any` matches any values, and `Specif` matches a specified value(s).
 
 - `address`
@@ -108,6 +108,8 @@ These fields is either `Any` or `Specif`.
     address: Any
     ```
 
+  `address` is either `IpAddr` or `Domain`.
+
     ```yaml
     # 192.168.0.1/24
     address:
@@ -116,6 +118,16 @@ These fields is either `Any` or `Specif`.
           addr: 192.168.0.1
           mask: 24
     ```
+
+    ```yaml
+    # {mail.,}google.{com,co.jp}
+    address:
+      Specif:
+        Domain:
+          # regexp pattern
+          pattern: "(mail\.)?google.(com|co\.jp)"
+    ```
+
 
 - `port`
 
@@ -171,7 +183,7 @@ These fields is either `Any` or `Specif`.
         protocol: Any
     ```
 
-- block access to www.facebook.com and youtube.com
+- block access to facebook.com and youtube.com
 
     ```yaml
     ---
@@ -180,7 +192,7 @@ These fields is either `Any` or `Specif`.
         address:
           Specif:
             Domain:
-              pattern: "www\.facebook\.com"
+              pattern: "(www\.)?facebook\.com"
         port: Any
         protocol:
           Specif: Tcp
@@ -188,7 +200,7 @@ These fields is either `Any` or `Specif`.
         address:
           Specif:
             Domain:
-              pattern: "www\.youtube\.com"
+              pattern: "(www\.)youtube\.com"
         port: Any
         protocol:
           Specif: Tcp
