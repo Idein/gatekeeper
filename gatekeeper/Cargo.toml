@@ -1,8 +1,14 @@
 [package]
 name = "gatekeeper"
 version = "0.1.0"
-authors = ["eldesh <nephits@gmail.com>"]
+authors = ["takayuki goto <takayuki@idein.jp>"]
 edition = "2018"
+license = "Apache-2.0"
+license-file = "../LICENSE"
+keyworkds = ["proxy", "socks"]
+categories = ["network-programming"]
+readme = "../Readme.md"
+description = "A SOCKS proxy implementation"
 
 [lib]
 name = "gatekeeper"
