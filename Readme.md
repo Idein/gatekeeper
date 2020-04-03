@@ -200,7 +200,7 @@ Value of these fields are either `Any` or `Specif`.
         address:
           Specif:
             Domain:
-              pattern: "(www\.)youtube\.com"
+              pattern: "(www\.)?youtube\.com"
         port: Any
         protocol:
           Specif: Tcp
