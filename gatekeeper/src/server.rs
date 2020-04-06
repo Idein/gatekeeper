@@ -98,8 +98,8 @@ impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
     pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
         Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
             config.clone(),
-            TcpBinder::new(config.read_timeout, config.write_timeout),
-            TcpUdpConnector,
+            TcpBinder::new(config.client_rw_timeout),
+            TcpUdpConnector::new(config.server_rw_timeout),
         )
     }
 }

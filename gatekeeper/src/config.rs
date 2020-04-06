@@ -13,8 +13,8 @@ pub struct ServerConfig {
     pub server_ip: IpAddr,
     pub server_port: u16,
     pub conn_rule: ConnectRule,
-    pub read_timeout: Option<Duration>,
-    pub write_timeout: Option<Duration>,
+    pub client_rw_timeout: Option<Duration>,
+    pub server_rw_timeout: Option<Duration>,
 }
 
 impl ServerConfig {
@@ -45,8 +45,8 @@ impl Default for ServerConfig {
             server_ip: Ipv4Addr::new(0, 0, 0, 0).into(),
             server_port: 1080,
             conn_rule: ConnectRule::any(),
-            read_timeout: Some(Duration::from_millis(2000)),
-            write_timeout: Some(Duration::from_millis(2000)),
+            client_rw_timeout: Some(Duration::from_millis(2000)),
+            server_rw_timeout: Some(Duration::from_millis(5000)),
         }
     }
 }
@@ -59,12 +59,12 @@ impl ServerConfig {
         self.conn_rule.clone()
     }
 
-    pub fn set_read_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
-        self.read_timeout = dur;
+    pub fn set_client_rw_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
+        self.client_rw_timeout = dur;
         self
     }
-    pub fn set_write_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
-        self.write_timeout = dur;
+    pub fn set_server_rw_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
+        self.server_rw_timeout = dur;
         self
     }
 }

@@ -10,8 +10,7 @@ use crate::error::Error;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
-    read_timeout: Option<Duration>,
-    write_timeout: Option<Duration>,
+    rw_timeout: Option<Duration>,
 }
 
 impl Iterator for TcpAcceptor {
@@ -19,12 +18,12 @@ impl Iterator for TcpAcceptor {
     fn next(&mut self) -> Option<Self::Item> {
         match self.listener.accept() {
             Ok((tcp, addr)) => {
-                if let Err(err) = tcp.set_read_timeout(self.read_timeout.clone()) {
-                    error!("set_read_timeout({:?}): {:?}", self.read_timeout, err);
+                if let Err(err) = tcp.set_read_timeout(self.rw_timeout.clone()) {
+                    error!("set_read_timeout({:?}): {:?}", self.rw_timeout, err);
                     return None;
                 }
-                if let Err(err) = tcp.set_write_timeout(self.write_timeout.clone()) {
-                    error!("set_write_timeout({:?}): {:?}", self.write_timeout, err);
+                if let Err(err) = tcp.set_write_timeout(self.rw_timeout.clone()) {
+                    error!("set_write_timeout({:?}): {:?}", self.rw_timeout, err);
                     return None;
                 }
                 Some((tcp, addr))
@@ -45,16 +44,12 @@ pub trait Binder {
 }
 
 pub struct TcpBinder {
-    read_timeout: Option<Duration>,
-    write_timeout: Option<Duration>,
+    rw_timeout: Option<Duration>,
 }
 
 impl TcpBinder {
-    pub fn new(read_timeout: Option<Duration>, write_timeout: Option<Duration>) -> Self {
-        Self {
-            read_timeout,
-            write_timeout,
-        }
+    pub fn new(rw_timeout: Option<Duration>) -> Self {
+        Self { rw_timeout }
     }
 }
 
@@ -69,8 +64,7 @@ impl Binder for TcpBinder {
             .map_err(|err| addr_error(err, addr))?;
         Ok(TcpAcceptor {
             listener: tcp.listen(0)?,
-            read_timeout: self.read_timeout,
-            write_timeout: self.write_timeout,
+            rw_timeout: self.rw_timeout,
         })
     }
 }
