@@ -60,7 +60,7 @@ where
 
 /// spawn a thread perform `Session.start`
 fn spawn_session<S, D, M>(
-    mut session: Session<D, M>,
+    session: Session<D, M>,
     // termination message sender
     tx: SyncSender<()>,
     addr: SocketAddr,

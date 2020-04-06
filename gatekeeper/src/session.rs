@@ -61,7 +61,7 @@ where
     }
 
     fn make_session<'a>(
-        &mut self,
+        self,
         mut src_conn: impl ByteStream + 'a,
     ) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error> {
         let mut socks = ReadWriteStream::new(&mut src_conn);
@@ -93,14 +93,10 @@ where
             }
         };
 
-        relay::spawn_relay(socks.into_inner(), conn)
+        relay::spawn_relay(socks.into_inner(), conn, self.rx)
     }
 
-    pub fn start<'a>(
-        &mut self,
-        _addr: SocketAddr,
-        src_conn: impl ByteStream + 'a,
-    ) -> Result<(), Error> {
+    pub fn start<'a>(self, _addr: SocketAddr, src_conn: impl ByteStream + 'a) -> Result<(), Error> {
         if let Err(err) = self.make_session(src_conn) {
             error!("session error: {}", err);
             trace!("session error: {:?}", err);

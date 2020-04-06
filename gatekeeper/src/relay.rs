@@ -1,4 +1,5 @@
 use std::io;
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
 use log::*;
@@ -9,6 +10,7 @@ use crate::byte_stream::{BoxedStream, ByteStream};
 pub fn spawn_relay(
     client_conn: BoxedStream,
     server_conn: impl ByteStream,
+    _rx: mpsc::Receiver<()>,
 ) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error> {
     debug!("spawn_relay");
     let (read_client, write_client) = client_conn.split()?;
