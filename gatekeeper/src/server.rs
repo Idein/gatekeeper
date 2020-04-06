@@ -24,6 +24,7 @@ pub struct Server<S, T, C> {
     /// make connection to service host
     connector: C,
     protocol_version: ProtocolVersion,
+    session: Vec<thread::JoinHandle<Result<(), Error>>>,
 }
 
 /// spawn a thread send accepted stream to `tx`
@@ -89,6 +90,7 @@ where
                 binder,
                 connector,
                 protocol_version: ProtocolVersion::from(5),
+                session: vec![],
             },
             tx,
         )
