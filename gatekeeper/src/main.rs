@@ -48,7 +48,7 @@ fn main() {
     }
     .expect("server config");
 
-    let (server, tx) = gk::server::Server::new(config);
+    let (mut server, tx) = gk::server::Server::new(config);
     set_handler(&[SIGTERM, SIGINT, SIGQUIT, SIGCHLD], move |_| {
         tx.send(gk::ServerCommand::Terminate).ok();
     })

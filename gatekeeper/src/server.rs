@@ -96,7 +96,7 @@ where
         )
     }
 
-    pub fn serve(&self) -> Result<(), Error> {
+    pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
         spawn_acceptor(acceptor, self.tx_cmd.clone());
 
@@ -114,7 +114,7 @@ where
                         self.config.server_addr(),
                         self.config.connect_rule(),
                     );
-                    spawn_session(session, addr, stream);
+                    self.session.push(spawn_session(session, addr, stream));
                 }
             }
         }
@@ -140,7 +140,7 @@ mod test {
     fn server_shutdown() {
         let config = ServerConfig::default();
 
-        let (server, tx) = Server::with_binder(config, TcpBinder, TcpUdpConnector);
+        let (mut server, tx) = Server::with_binder(config, TcpBinder, TcpUdpConnector);
         let shutdown = Arc::new(Mutex::new(SystemTime::now()));
         let th = {
             let shutdown = shutdown.clone();
@@ -179,7 +179,7 @@ mod test {
             ),
             src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
-        let (server, tx) = Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector);
+        let (mut server, tx) = Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector);
         let th = thread::spawn(move || {
             server.serve().ok();
         });
