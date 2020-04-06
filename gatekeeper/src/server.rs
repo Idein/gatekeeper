@@ -104,7 +104,15 @@ where
             use ServerCommand::*;
             info!("cmd: {:?}", cmd);
             match cmd {
-                Terminate => break,
+                Terminate => {
+                    self.session.drain(..).for_each(|hnd| {
+                        match hnd.join() {
+                            Ok(res) => debug!("join session: {:?}", res),
+                            Err(err) => error!("join session error: {:?}", err),
+                        }
+                    });
+                    break
+                },
                 Connect(stream, addr) => {
                     info!("connect from: {}", addr);
                     let session = Session::new(
