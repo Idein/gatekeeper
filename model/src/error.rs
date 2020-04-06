@@ -31,8 +31,12 @@ pub enum ErrorKind {
     AddressAlreadInUse { addr: SocketAddr },
     #[fail(display = "address not available: {}", addr)]
     AddressNotAvailable { addr: SocketAddr },
+    /// rejected by gatekeeper
     #[fail(display = "connection not allowed: {}: {}", addr, protocol)]
     ConnectionNotAllowed { addr: Address, protocol: L4Protocol },
+    /// rejected by gatekeeper
+    #[fail(display = "connection refused: {}: {}", addr, protocol)]
+    ConnectionRefused { addr: Address, protocol: L4Protocol }
 }
 
 impl ErrorKind {
@@ -48,6 +52,10 @@ impl ErrorKind {
 
     pub fn connection_not_allowed(addr: Address, protocol: L4Protocol) -> Self {
         ErrorKind::ConnectionNotAllowed { addr, protocol }
+    }
+
+    pub fn connection_refused(addr: Address, protocol: L4Protocol) -> Self {
+        ErrorKind::ConnectionRefused { addr, protocol }
     }
 }
 
@@ -97,6 +105,7 @@ impl Error {
             K::AddressAlreadInUse { .. } => CErr::ServerFailure,
             K::AddressNotAvailable { .. } => CErr::ServerFailure,
             K::ConnectionNotAllowed { .. } => CErr::ConnectionNotAllowed,
+            K::ConnectionRefused { .. } => CErr::ConnectionRefused,
         }
     }
 }

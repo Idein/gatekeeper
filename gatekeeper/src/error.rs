@@ -93,6 +93,7 @@ impl From<model::Error> for Error {
             K::AddressAlreadInUse { .. } => err.context(ErrorKind::Io),
             K::AddressNotAvailable { .. } => err.context(ErrorKind::Io),
             K::ConnectionNotAllowed { .. } => err.context(ErrorKind::NotAllowed),
+            K::ConnectionRefused { .. } => err.context(ErrorKind::Io),
         };
         Error { inner: ctx }
     }

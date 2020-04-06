@@ -1,10 +1,13 @@
+use std::io;
 use std::net::TcpStream;
 
 use crate::byte_stream::ByteStream;
 use crate::pkt_stream::{PktStream, UdpPktStream};
 
-use model::error::Error;
+use model::error::{Error, ErrorKind};
 use model::model::*;
+
+use failure::Fail;
 
 pub trait Connector: Send {
     type B: ByteStream;
@@ -20,11 +23,19 @@ impl Connector for TcpUdpConnector {
     type B = TcpStream;
     type P = UdpPktStream;
     fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
-        match addr {
-            Address::IpAddr(addr, port) => TcpStream::connect(SocketAddr::new(addr, port)),
-            Address::Domain(host, port) => TcpStream::connect((host.as_str(), port)),
+        match &addr {
+            Address::IpAddr(addr, port) => TcpStream::connect(SocketAddr::new(*addr, *port)),
+            Address::Domain(host, port) => TcpStream::connect((host.as_str(), *port)),
         }
-        .map_err(Into::into)
+        .map_err(|err| {
+            match err.kind() {
+                io::ErrorKind::ConnectionRefused => {
+                    ErrorKind::connection_refused(addr, L4Protocol::Tcp).into()
+                }
+                _ => err.context(ErrorKind::Io),
+            }
+            .into()
+        })
     }
     fn connect_pkt_stream(&self, _addr: Address) -> Result<Self::P, Error> {
         unimplemented!("connect_pkt_stream")
