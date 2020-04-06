@@ -63,8 +63,8 @@ where
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
     pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
         Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
-            config,
-            TcpBinder,
+            config.clone(),
+            TcpBinder::new(config.read_timeout, config.write_timeout),
             TcpUdpConnector,
         )
     }
@@ -105,14 +105,12 @@ where
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
-                    self.session.drain(..).for_each(|hnd| {
-                        match hnd.join() {
-                            Ok(res) => debug!("join session: {:?}", res),
-                            Err(err) => error!("join session error: {:?}", err),
-                        }
+                    self.session.drain(..).for_each(|hnd| match hnd.join() {
+                        Ok(res) => debug!("join session: {:?}", res),
+                        Err(err) => error!("join session error: {:?}", err),
                     });
-                    break
-                },
+                    break;
+                }
                 Connect(stream, addr) => {
                     info!("connect from: {}", addr);
                     let session = Session::new(
@@ -187,7 +185,8 @@ mod test {
             ),
             src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
-        let (mut server, tx) = Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector);
+        let (mut server, tx) =
+            Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector);
         let th = thread::spawn(move || {
             server.serve().ok();
         });
