@@ -170,7 +170,7 @@ mod test {
             command: Command::Connect,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             5.into(),
             BufferConnector::<BufferStream> {
                 strms: vec![(
@@ -205,7 +205,7 @@ mod test {
             command: Command::UdpAssociate,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             5.into(),
             BufferConnector::<BufferStream> {
                 strms: vec![(
@@ -239,7 +239,7 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             version,
             BufferConnector::<BufferStream> {
                 strms: vec![(
@@ -288,7 +288,7 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             version,
             BufferConnector::<BufferStream> {
                 strms: vec![(connect_to.clone(), Err(ConnectError::ConnectionRefused))]
@@ -348,7 +348,7 @@ mod test {
         use io::Write;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::Domain("example.com".into(), 5123);
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             version,
             BufferConnector {
                 strms: vec![(
@@ -394,6 +394,7 @@ mod test {
             cursor.write_all(&gen_random_vec(8200)).unwrap();
             BufferStream::new(cursor.into_inner().into(), vec![].into())
         };
+        let dst_connector = session.dst_connector.clone();
         // start relay
         let (relay_out, relay_in) = session.make_session(src.clone()).unwrap();
         assert!(relay_out.join().is_ok());
@@ -423,7 +424,7 @@ mod test {
         // check for relayed contents
         // client <-- target
         assert_eq!(vec_from_read(&mut *src.wr_buff()), {
-            let mut rd_buff = session.dst_connector.stream(&connect_to).rd_buff();
+            let mut rd_buff = dst_connector.stream(&connect_to).rd_buff();
             rd_buff.set_position(0);
             vec_from_read(&mut *rd_buff)
         });
@@ -435,7 +436,7 @@ mod test {
                 vec_from_read(&mut *rd_buff)
             },
             {
-                let mut wr_buff = session.dst_connector.stream(&connect_to).wr_buff();
+                let mut wr_buff = dst_connector.stream(&connect_to).wr_buff();
                 wr_buff.set_position(0);
                 vec_from_read(&mut *wr_buff)
             }
