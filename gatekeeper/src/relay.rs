@@ -6,13 +6,10 @@ use model;
 
 use crate::byte_stream::{BoxedStream, ByteStream};
 
-pub fn spawn_relay<R>(
+pub fn spawn_relay(
     client_conn: BoxedStream,
-    server_conn: R,
-) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error>
-where
-    R: ByteStream,
-{
+    server_conn: impl ByteStream,
+) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error> {
     debug!("spawn_relay");
     let (read_client, write_client) = client_conn.split()?;
     let (read_server, write_server) = server_conn.split()?;
@@ -22,15 +19,11 @@ where
     ))
 }
 
-fn spawn_relay_half<S, D>(
+fn spawn_relay_half(
     name: &str,
-    mut src: S,
-    mut dst: D,
-) -> Result<JoinHandle<()>, model::Error>
-where
-    S: io::Read + Send + 'static,
-    D: io::Write + Send + 'static,
-{
+    mut src: impl io::Read + Send + 'static,
+    mut dst: impl io::Write + Send + 'static,
+) -> Result<JoinHandle<()>, model::Error> {
     debug!("spawn_relay_half");
     let name = name.to_owned();
     thread::Builder::new()
