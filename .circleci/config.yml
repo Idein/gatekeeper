@@ -6,10 +6,17 @@ jobs:
       - image: circleci/rust:1.40.0-stretch
         environment:
           RUST_BACKTRACE: 1 
+          GIT_AUTHOR_NAME: circleci
+          GIT_AUTHOR_EMAIL: circleci@example.com
     working_directory: /tmp/gatekeeper
     steps:
       - checkout
-      - run: git merge --no-edit origin/master
+      - run:
+          name: Merge origin/master
+          command: |
+            git config --global user.email "circleci@example.com"
+            git config --global user.name "circleci"
+            git merge --no-edit origin/master
       - run:
           name: Build Gatekeeper
           command: |
@@ -24,10 +31,17 @@ jobs:
       image: circleci/classic:201808-01
     environment:
       RUST_BACKTRACE: 1
+      GIT_AUTHOR_NAME: circleci
+      GIT_AUTHOR_EMAIL: circleci@example.com
     working_directory: /tmp/gatekeeper
     steps:
       - checkout
-      - run: git merge --no-edit origin/master
+      - run:
+          name: Merge origin/master
+          command: |
+            git config --global user.email "circleci@example.com"
+            git config --global user.name "circleci"
+            git merge --no-edit origin/master
       - run:
           name: Install Rust
           command: |
