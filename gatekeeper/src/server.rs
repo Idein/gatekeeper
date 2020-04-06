@@ -25,6 +25,26 @@ impl SessionHandle {
     fn new(handle: thread::JoinHandle<Result<(), Error>>, tx: SyncSender<()>) -> Self {
         Self { handle, tx }
     }
+
+    fn stop(&self) -> Result<(), model::Error> {
+        use model::ErrorKind;
+        self.tx.send(()).map_err(|_| {
+            ErrorKind::message_fmt(format_args!("session stop fail: {:?}", self.handle)).into()
+        })
+    }
+
+    fn join(self) -> thread::Result<Result<(), Error>> {
+        match self.handle.join() {
+            Ok(res) => {
+                debug!("join session: {:?}", res);
+                Ok(res)
+            }
+            Err(err) => {
+                error!("join session error: {:?}", err);
+                Err(err)
+            }
+        }
+    }
 }
 
 pub struct Server<S, T, C> {
@@ -121,15 +141,12 @@ where
                 Terminate => {
                     // request to stop
                     self.session.iter().for_each(|ss| {
-                        ss.tx.send(()).ok();
+                        ss.stop().ok();
                     });
                     // waiting for a stop
-                    self.session
-                        .drain(..)
-                        .for_each(|ss| match ss.handle.join() {
-                            Ok(res) => debug!("join session: {:?}", res),
-                            Err(err) => error!("join session error: {:?}", err),
-                        });
+                    self.session.drain(..).for_each(|ss| {
+                        ss.join().ok();
+                    });
                     break;
                 }
                 Connect(stream, addr) => {
