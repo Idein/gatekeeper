@@ -15,6 +15,18 @@ use crate::session::Session;
 
 use model::{ProtocolVersion, SocketAddr};
 
+#[derive(Debug)]
+pub struct SessionHandle {
+    handle: thread::JoinHandle<Result<(), Error>>,
+    tx: SyncSender<()>,
+}
+
+impl SessionHandle {
+    fn new(handle: thread::JoinHandle<Result<(), Error>>, tx: SyncSender<()>) -> Self {
+        Self { handle, tx }
+    }
+}
+
 pub struct Server<S, T, C> {
     config: ServerConfig,
     tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
@@ -24,7 +36,7 @@ pub struct Server<S, T, C> {
     /// make connection to service host
     connector: C,
     protocol_version: ProtocolVersion,
-    session: Vec<thread::JoinHandle<Result<(), Error>>>,
+    session: Vec<SessionHandle>,
 }
 
 /// spawn a thread send accepted stream to `tx`
@@ -49,15 +61,17 @@ where
 /// spawn a thread perform `Session.start`
 fn spawn_session<S, D, M>(
     mut session: Session<D, M>,
+    // termination message sender
+    tx: SyncSender<()>,
     addr: SocketAddr,
     strm: S,
-) -> thread::JoinHandle<Result<(), Error>>
+) -> SessionHandle
 where
     S: ByteStream + 'static,
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    thread::spawn(move || session.start(addr, strm))
+    SessionHandle::new(thread::spawn(move || session.start(addr, strm)), tx)
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
@@ -105,22 +119,29 @@ where
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
-                    self.session.drain(..).for_each(|hnd| match hnd.join() {
-                        Ok(res) => debug!("join session: {:?}", res),
-                        Err(err) => error!("join session error: {:?}", err),
+                    // request to stop
+                    self.session.iter().for_each(|ss| {
+                        ss.tx.send(()).ok();
                     });
+                    // waiting for a stop
+                    self.session
+                        .drain(..)
+                        .for_each(|ss| match ss.handle.join() {
+                            Ok(res) => debug!("join session: {:?}", res),
+                            Err(err) => error!("join session error: {:?}", err),
+                        });
                     break;
                 }
                 Connect(stream, addr) => {
                     info!("connect from: {}", addr);
-                    let session = Session::new(
+                    let (session, tx) = Session::new(
                         self.protocol_version,
                         self.connector.clone(),
                         NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
                     );
-                    self.session.push(spawn_session(session, addr, stream));
+                    self.session.push(spawn_session(session, tx, addr, stream));
                 }
             }
         }

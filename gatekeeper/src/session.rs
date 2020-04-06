@@ -1,4 +1,5 @@
 use std::ops::{Deref, DerefMut};
+use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use log::*;
@@ -21,6 +22,8 @@ pub struct Session<D, S> {
     pub authorizer: S,
     pub server_addr: SocketAddr,
     pub conn_rule: ConnectRule,
+    // termination message receiver
+    rx: mpsc::Receiver<()>,
 }
 
 impl<D, S> Session<D, S>
@@ -34,14 +37,19 @@ where
         authorizer: S,
         server_addr: SocketAddr,
         conn_rule: ConnectRule,
-    ) -> Self {
-        Self {
-            version,
-            dst_connector,
-            authorizer,
-            server_addr,
-            conn_rule,
-        }
+    ) -> (Self, mpsc::SyncSender<()>) {
+        let (tx, rx) = mpsc::sync_channel(1);
+        (
+            Self {
+                version,
+                dst_connector,
+                authorizer,
+                server_addr,
+                conn_rule,
+                rx,
+            },
+            tx,
+        )
     }
 
     fn connect_reply(&self, connect_result: Result<(), ConnectError>) -> ConnectReply {
