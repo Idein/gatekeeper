@@ -55,12 +55,12 @@ pub mod test {
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
     pub struct BufferConnector<S> {
-        pub strms: BTreeMap<Address, S>,
+        pub strms: BTreeMap<Address, Result<S, ConnectError>>,
     }
 
     impl<S> BufferConnector<S> {
         pub fn stream(&self, addr: &Address) -> &S {
-            &self.strms[addr]
+            &self.strms[addr].as_ref().unwrap()
         }
     }
 
@@ -72,21 +72,33 @@ pub mod test {
         type P = UdpPktStream;
         fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
             println!("connect_byte_stream: {:?}", &addr);
-            if self.strms.contains_key(&addr) {
-                Ok(self.strms[&addr].clone())
-            } else {
-                use Address::*;
-                match addr {
-                    Domain(domain, port) => Err(ErrorKind::DomainNotResolved {
-                        domain: domain.into(),
-                        port,
-                    }
-                    .into()),
-                    IpAddr(ipaddr, port) => Err(ErrorKind::HostUnreachable {
-                        host: ipaddr.to_string(),
-                        port,
-                    }
-                    .into()),
+            match &self.strms[&addr] {
+                Ok(strm) => Ok(strm.clone()),
+                Err(err) => {
+                    use Address::*;
+                    use ConnectError::*;
+                    use L4Protocol::*;
+                    let kind = match err {
+                        NetworkUnreachable => match addr {
+                            Domain(domain, port) => ErrorKind::DomainNotResolved { domain, port },
+                            IpAddr(ipaddr, port) => ErrorKind::HostUnreachable {
+                                host: ipaddr.to_string(),
+                                port,
+                            },
+                        },
+                        HostUnreachable => {
+                            let port = addr.port();
+                            let host = match addr {
+                                Domain(domain, _) => domain,
+                                IpAddr(ipaddr, _) => ipaddr.to_string(),
+                            };
+                            ErrorKind::HostUnreachable { host, port }
+                        }
+                        ConnectionNotAllowed => ErrorKind::connection_not_allowed(addr, Tcp),
+                        ConnectionRefused => ErrorKind::connection_refused(addr, Tcp),
+                        _ => ErrorKind::Io,
+                    };
+                    Err(kind.into())
                 }
             }
         }
