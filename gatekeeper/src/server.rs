@@ -91,7 +91,21 @@ where
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    SessionHandle::new(thread::spawn(move || session.start(addr, strm)), tx)
+    SessionHandle::new(
+        thread::spawn(move || match session.start(addr, strm) {
+            Ok((relay1, relay2)) => {
+                if let Err(err) = relay1.join() {
+                    error!("relay1 join: {:?}", err);
+                }
+                if let Err(err) = relay2.join() {
+                    error!("relay2 join: {:?}", err);
+                }
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }),
+        tx,
+    )
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {

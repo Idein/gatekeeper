@@ -96,13 +96,16 @@ where
         relay::spawn_relay(socks.into_inner(), conn, self.rx)
     }
 
-    pub fn start<'a>(self, _addr: SocketAddr, src_conn: impl ByteStream + 'a) -> Result<(), Error> {
-        if let Err(err) = self.make_session(src_conn) {
+    pub fn start<'a>(
+        self,
+        _addr: SocketAddr,
+        src_conn: impl ByteStream + 'a,
+    ) -> Result<(JoinHandle<()>, JoinHandle<()>), Error> {
+        self.make_session(src_conn).map_err(|err| {
             error!("session error: {}", err);
             trace!("session error: {:?}", err);
-            return Err(err.into());
-        }
-        Ok(())
+            err.into()
+        })
     }
 }
 
