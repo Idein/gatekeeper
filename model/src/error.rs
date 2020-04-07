@@ -34,9 +34,9 @@ pub enum ErrorKind {
     /// rejected by gatekeeper
     #[fail(display = "connection not allowed: {}: {}", addr, protocol)]
     ConnectionNotAllowed { addr: Address, protocol: L4Protocol },
-    /// rejected by gatekeeper
+    /// rejected by external server
     #[fail(display = "connection refused: {}: {}", addr, protocol)]
-    ConnectionRefused { addr: Address, protocol: L4Protocol }
+    ConnectionRefused { addr: Address, protocol: L4Protocol },
 }
 
 impl ErrorKind {
