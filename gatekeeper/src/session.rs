@@ -351,7 +351,7 @@ mod test {
         use io::Write;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::Domain("example.com".into(), 5123);
-        let (session, _) = Session::new(
+        let (session, tx) = Session::new(
             version,
             BufferConnector {
                 strms: vec![(
@@ -400,6 +400,7 @@ mod test {
         let dst_connector = session.dst_connector.clone();
         // start relay
         let (relay_out, relay_in) = session.make_session(src.clone()).unwrap();
+        tx.send(()).unwrap();
         assert!(relay_out.join().is_ok());
         assert!(relay_in.join().is_ok());
 
