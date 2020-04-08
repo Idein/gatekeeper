@@ -82,6 +82,7 @@ impl From<model::Error> for Error {
         use model::ErrorKind as K;
         let ctx = match err.kind() {
             K::Io => err.context(ErrorKind::Io),
+            K::Poisoned(_) => err.context(ErrorKind::Io),
             K::MessageFormat { .. } => err.context(ErrorKind::Unknown),
             K::Authentication => err.context(ErrorKind::Auth),
             K::NoAcceptableMethod => err.context(ErrorKind::NotSupported),

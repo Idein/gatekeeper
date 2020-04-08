@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::Display;
+use std::sync;
 
 use failure::{Backtrace, Context, Fail};
 
@@ -11,6 +12,8 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
+    #[fail(display = "poisoned error: {}", _0)]
+    Poisoned(String),
     #[fail(display = "message format error: {}", message)]
     MessageFormat { message: String },
     #[fail(display = "authentication error: general")]
@@ -94,6 +97,7 @@ impl Error {
         use ErrorKind as K;
         match self.kind() {
             K::Io => CErr::ServerFailure,
+            K::Poisoned(_) => CErr::ServerFailure,
             K::MessageFormat { .. } => CErr::ServerFailure,
             K::Authentication => CErr::ConnectionNotAllowed,
             K::NoAcceptableMethod => CErr::ConnectionNotAllowed,
@@ -129,5 +133,11 @@ impl From<std::io::Error> for Error {
         Error {
             inner: error.context(ErrorKind::Io),
         }
+    }
+}
+
+impl<T: fmt::Debug> From<sync::PoisonError<T>> for Error {
+    fn from(error: sync::PoisonError<T>) -> Self {
+        ErrorKind::Poisoned(format!("{:?}", error)).into()
     }
 }

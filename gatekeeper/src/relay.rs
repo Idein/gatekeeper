@@ -1,5 +1,5 @@
 use std::io;
-use std::sync::{mpsc, Arc, Mutex, TryLockError};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 use log::*;
@@ -36,6 +36,7 @@ fn spawn_relay_half(
         .spawn(move || {
             debug!("spawned: {}", name);
             loop {
+                use io::ErrorKind as K;
                 match io::copy(&mut src, &mut dst) {
                     Ok(size) => {
                         trace!("{}: {}", name, size);
@@ -43,17 +44,13 @@ fn spawn_relay_half(
                             return;
                         }
                     }
+                    Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {}
                     Err(err) => {
-                        match err.kind() {
-                            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut => {
-                                // time out
-                            }
-                            _ => error!("{}: {}", name, err),
-                        };
-                        trace!("{}: {:?}", name, err)
+                        error!("{}: {:?}", name, err);
+                        return;
                     }
                 }
-                match rx.try_lock() {
+                match rx.lock() {
                     Ok(rx) => match rx.try_recv() {
                         Ok(()) => {
                             info!("{}: recv termination message", name);
@@ -61,14 +58,13 @@ fn spawn_relay_half(
                         }
                         Err(TryRecvError::Empty) => trace!("{}: message empty", name),
                         Err(TryRecvError::Disconnected) => {
-                            debug!("{}: disconnected", name);
+                            error!("{}: disconnected", name);
                             return;
                         }
                     },
-                    Err(TryLockError::WouldBlock) => trace!("would block"),
-                    Err(TryLockError::Poisoned(err)) => {
-                        error!("poisoned error: {:?}", err);
-                        panic!();
+                    Err(err) => {
+                        error!("rx.lock: {:?}", err);
+                        return;
                     }
                 }
             }
