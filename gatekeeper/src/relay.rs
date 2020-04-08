@@ -28,6 +28,7 @@ fn spawn_relay_half(
     mut src: impl io::Read + Send + 'static,
     mut dst: impl io::Write + Send + 'static,
 ) -> Result<JoinHandle<()>, model::Error> {
+    use io::ErrorKind as K;
     use mpsc::TryRecvError;
 
     let name = name.to_owned();
@@ -36,7 +37,6 @@ fn spawn_relay_half(
         .spawn(move || {
             debug!("spawned: {}", name);
             loop {
-                use io::ErrorKind as K;
                 match io::copy(&mut src, &mut dst) {
                     Ok(size) => {
                         trace!("{}: {}", name, size);
@@ -50,22 +50,14 @@ fn spawn_relay_half(
                         return;
                     }
                 }
-                match rx.lock() {
-                    Ok(rx) => match rx.try_recv() {
-                        Ok(()) => {
-                            info!("{}: recv termination message", name);
-                            return;
-                        }
-                        Err(TryRecvError::Empty) => trace!("{}: message empty", name),
-                        Err(TryRecvError::Disconnected) => {
-                            error!("{}: disconnected", name);
-                            return;
-                        }
-                    },
-                    Err(err) => {
-                        error!("rx.lock: {:?}", err);
+                let rx = rx.lock().expect("another side relay may be poisoned");
+                match rx.try_recv() {
+                    Ok(()) => {
+                        info!("{}: recv termination message", name);
                         return;
                     }
+                    Err(TryRecvError::Empty) => trace!("{}: message empty", name),
+                    Err(TryRecvError::Disconnected) => panic!("the main thread must hold Sender"),
                 }
             }
         })
