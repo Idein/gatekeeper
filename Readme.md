@@ -1,6 +1,6 @@
 # Gatekeeper: A [SOCKS5] Server written in Rust.
 
-[![Idein](https://circleci.com/gh/Idein/gatekeeper.svg?style=shield&circle-token=72db489b175a89fc7d8bc2fb008f591f67e6a304)](https://circleci.com/gh/Idein/gatekeeper) [![License](https://img.shields.io/badge/license-Apache--2.0-informational)](https://opensource.org/licenses/Apache-2.0)
+[![Idein](https://circleci.com/gh/Idein/gatekeeper.svg?style=shield)](https://circleci.com/gh/Idein/gatekeeper) [![License](https://img.shields.io/badge/license-Apache--2.0-informational?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
 
 
 ## Features
