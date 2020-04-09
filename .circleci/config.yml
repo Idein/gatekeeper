@@ -41,7 +41,7 @@ jobs:
           name: Unit Test
           command: |
             cargo test --verbose -- --nocapture
-      - save_rust_cache:
+      - save-rust-cache
 
   integration_test:
     machine:
