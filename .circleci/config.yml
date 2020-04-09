@@ -13,6 +13,7 @@ commands:
           key: *cache-key-rust
           paths:
             - ~/.cargo
+            - /usr/local/cargo
             - target
 
 
