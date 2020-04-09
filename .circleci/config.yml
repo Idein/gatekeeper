@@ -22,7 +22,7 @@ jobs:
       - image: circleci/rust:1.40.0-stretch
         environment:
           RUST_BACKTRACE: 1
-          CARGO_HOME: /home/circleci/.cago
+          CARGO_HOME: /home/circleci/.cargo
           GIT_AUTHOR_NAME: circleci
           GIT_AUTHOR_EMAIL: circleci@example.com
     working_directory: /tmp/gatekeeper
