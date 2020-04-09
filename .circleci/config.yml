@@ -4,6 +4,7 @@ commands:
     steps:
       - run: |
           cat Cargo.lock >> /tmp/build-dep
+          cat rust-toolchain >> /tmp/build-dep
       - restore_cache:
           key: &cache-key-rust cache-cargo-target-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "/tmp/build-dep" }}
   save-rust-cache:
