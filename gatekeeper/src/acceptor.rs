@@ -1,5 +1,6 @@
 use std::io;
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::time::Duration;
 
 use failure::Fail;
 use log::*;
@@ -9,13 +10,24 @@ use crate::error::Error;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
+    rw_timeout: Option<Duration>,
 }
 
 impl Iterator for TcpAcceptor {
     type Item = (TcpStream, SocketAddr);
     fn next(&mut self) -> Option<Self::Item> {
         match self.listener.accept() {
-            Ok(x) => Some(x),
+            Ok((tcp, addr)) => {
+                if let Err(err) = tcp.set_read_timeout(self.rw_timeout.clone()) {
+                    error!("set_read_timeout({:?}): {:?}", self.rw_timeout, err);
+                    return None;
+                }
+                if let Err(err) = tcp.set_write_timeout(self.rw_timeout.clone()) {
+                    error!("set_write_timeout({:?}): {:?}", self.rw_timeout, err);
+                    return None;
+                }
+                Some((tcp, addr))
+            }
             Err(err) => {
                 error!("accept error: {}", err);
                 trace!("accept error: {:?}", err);
@@ -31,7 +43,15 @@ pub trait Binder {
     fn bind(&self, addr: SocketAddr) -> Result<Self::Iter, Error>;
 }
 
-pub struct TcpBinder;
+pub struct TcpBinder {
+    rw_timeout: Option<Duration>,
+}
+
+impl TcpBinder {
+    pub fn new(rw_timeout: Option<Duration>) -> Self {
+        Self { rw_timeout }
+    }
+}
 
 impl Binder for TcpBinder {
     type Stream = TcpStream;
@@ -44,6 +64,7 @@ impl Binder for TcpBinder {
             .map_err(|err| addr_error(err, addr))?;
         Ok(TcpAcceptor {
             listener: tcp.listen(0)?,
+            rw_timeout: self.rw_timeout,
         })
     }
 }

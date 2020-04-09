@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::Display;
+use std::sync;
 
 use failure::{Backtrace, Context, Fail};
 
@@ -11,6 +12,8 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub enum ErrorKind {
     #[fail(display = "io error")]
     Io,
+    #[fail(display = "poisoned error: {}", _0)]
+    Poisoned(String),
     #[fail(display = "message format error: {}", message)]
     MessageFormat { message: String },
     #[fail(display = "authentication error: general")]
@@ -31,8 +34,12 @@ pub enum ErrorKind {
     AddressAlreadInUse { addr: SocketAddr },
     #[fail(display = "address not available: {}", addr)]
     AddressNotAvailable { addr: SocketAddr },
+    /// rejected by gatekeeper
     #[fail(display = "connection not allowed: {}: {}", addr, protocol)]
     ConnectionNotAllowed { addr: Address, protocol: L4Protocol },
+    /// rejected by external server
+    #[fail(display = "connection refused: {}: {}", addr, protocol)]
+    ConnectionRefused { addr: Address, protocol: L4Protocol },
 }
 
 impl ErrorKind {
@@ -48,6 +55,10 @@ impl ErrorKind {
 
     pub fn connection_not_allowed(addr: Address, protocol: L4Protocol) -> Self {
         ErrorKind::ConnectionNotAllowed { addr, protocol }
+    }
+
+    pub fn connection_refused(addr: Address, protocol: L4Protocol) -> Self {
+        ErrorKind::ConnectionRefused { addr, protocol }
     }
 }
 
@@ -86,6 +97,7 @@ impl Error {
         use ErrorKind as K;
         match self.kind() {
             K::Io => CErr::ServerFailure,
+            K::Poisoned(_) => CErr::ServerFailure,
             K::MessageFormat { .. } => CErr::ServerFailure,
             K::Authentication => CErr::ConnectionNotAllowed,
             K::NoAcceptableMethod => CErr::ConnectionNotAllowed,
@@ -97,6 +109,7 @@ impl Error {
             K::AddressAlreadInUse { .. } => CErr::ServerFailure,
             K::AddressNotAvailable { .. } => CErr::ServerFailure,
             K::ConnectionNotAllowed { .. } => CErr::ConnectionNotAllowed,
+            K::ConnectionRefused { .. } => CErr::ConnectionRefused,
         }
     }
 }
@@ -120,5 +133,11 @@ impl From<std::io::Error> for Error {
         Error {
             inner: error.context(ErrorKind::Io),
         }
+    }
+}
+
+impl<T: fmt::Debug> From<sync::PoisonError<T>> for Error {
+    fn from(error: sync::PoisonError<T>) -> Self {
+        ErrorKind::Poisoned(format!("{:?}", error)).into()
     }
 }

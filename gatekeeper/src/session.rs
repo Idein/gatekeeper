@@ -1,4 +1,5 @@
 use std::ops::{Deref, DerefMut};
+use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use log::*;
@@ -21,6 +22,8 @@ pub struct Session<D, S> {
     pub authorizer: S,
     pub server_addr: SocketAddr,
     pub conn_rule: ConnectRule,
+    // termination message receiver
+    rx: mpsc::Receiver<()>,
 }
 
 impl<D, S> Session<D, S>
@@ -34,14 +37,19 @@ where
         authorizer: S,
         server_addr: SocketAddr,
         conn_rule: ConnectRule,
-    ) -> Self {
-        Self {
-            version,
-            dst_connector,
-            authorizer,
-            server_addr,
-            conn_rule,
-        }
+    ) -> (Self, mpsc::SyncSender<()>) {
+        let (tx, rx) = mpsc::sync_channel(1);
+        (
+            Self {
+                version,
+                dst_connector,
+                authorizer,
+                server_addr,
+                conn_rule,
+                rx,
+            },
+            tx,
+        )
     }
 
     fn connect_reply(&self, connect_result: Result<(), ConnectError>) -> ConnectReply {
@@ -53,7 +61,7 @@ where
     }
 
     fn make_session<'a>(
-        &mut self,
+        self,
         mut src_conn: impl ByteStream + 'a,
     ) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error> {
         let mut socks = ReadWriteStream::new(&mut src_conn);
@@ -85,20 +93,19 @@ where
             }
         };
 
-        relay::spawn_relay(socks.into_inner(), conn)
+        relay::spawn_relay(socks.into_inner(), conn, self.rx)
     }
 
     pub fn start<'a>(
-        &mut self,
+        self,
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
-    ) -> Result<(), Error> {
-        if let Err(err) = self.make_session(src_conn) {
+    ) -> Result<(JoinHandle<()>, JoinHandle<()>), Error> {
+        self.make_session(src_conn).map_err(|err| {
             error!("session error: {}", err);
             trace!("session error: {:?}", err);
-            return Err(err.into());
-        }
-        Ok(())
+            err.into()
+        })
     }
 }
 
@@ -166,12 +173,12 @@ mod test {
             command: Command::Connect,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             5.into(),
             BufferConnector::<BufferStream> {
                 strms: vec![(
                     req.connect_to.clone(),
-                    BufferStream::new(vec![].into(), vec![].into()),
+                    Ok(BufferStream::new(vec![].into(), vec![].into())),
                 )]
                 .into_iter()
                 .collect(),
@@ -201,12 +208,12 @@ mod test {
             command: Command::UdpAssociate,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             5.into(),
             BufferConnector::<BufferStream> {
                 strms: vec![(
                     req.connect_to.clone(),
-                    BufferStream::new(vec![].into(), vec![].into()),
+                    Ok(BufferStream::new(vec![].into(), vec![].into())),
                 )]
                 .into_iter()
                 .collect(),
@@ -235,12 +242,12 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
-        let mut session = Session::new(
+        let (session, _) = Session::new(
             version,
             BufferConnector::<BufferStream> {
                 strms: vec![(
                     connect_to.clone(),
-                    BufferStream::new(vec![].into(), vec![].into()),
+                    Ok(BufferStream::new(vec![].into(), vec![].into())),
                 )]
                 .into_iter()
                 .collect(),
@@ -279,6 +286,52 @@ mod test {
         );
     }
 
+    #[test]
+    fn connection_refused() {
+        use crate::auth_service::NoAuthService;
+        let version: ProtocolVersion = 5.into();
+        let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let (session, _) = Session::new(
+            version,
+            BufferConnector::<BufferStream> {
+                strms: vec![(connect_to.clone(), Err(ConnectError::ConnectionRefused))]
+                    .into_iter()
+                    .collect(),
+            },
+            NoAuthService::new(),
+            "0.0.0.0:1080".parse().unwrap(),
+            ConnectRule::any(),
+        );
+        println!("session: {:?}", session);
+
+        let buff = {
+            let mut cursor = io::Cursor::new(vec![]);
+            socks::test::write_method_candidates(
+                &mut cursor,
+                MethodCandidates {
+                    version,
+                    method: vec![model::Method::NoAuth],
+                },
+            )
+            .unwrap();
+            socks::test::write_connect_request(
+                &mut cursor,
+                ConnectRequest {
+                    version,
+                    command: Command::Connect,
+                    connect_to: connect_to.clone(),
+                },
+            )
+            .unwrap();
+            cursor.into_inner()
+        };
+        let src = BufferStream::new(buff.into(), vec![].into());
+        assert_eq!(
+            session.make_session(src).unwrap_err().kind(),
+            &ErrorKind::connection_refused(connect_to, L4Protocol::Tcp)
+        );
+    }
+
     fn gen_random_vec(size: usize) -> Vec<u8> {
         use rand::distributions::Standard;
         use rand::{thread_rng, Rng};
@@ -298,12 +351,15 @@ mod test {
         use io::Write;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::Domain("example.com".into(), 5123);
-        let mut session = Session::new(
+        let (session, tx) = Session::new(
             version,
             BufferConnector {
                 strms: vec![(
                     connect_to.clone(),
-                    BufferStream::new(gen_random_vec(8200).into(), vec![].into()),
+                    Ok(BufferStream::new(
+                        gen_random_vec(8200).into(),
+                        vec![].into(),
+                    )),
                 )]
                 .into_iter()
                 .collect(),
@@ -341,8 +397,10 @@ mod test {
             cursor.write_all(&gen_random_vec(8200)).unwrap();
             BufferStream::new(cursor.into_inner().into(), vec![].into())
         };
+        let dst_connector = session.dst_connector.clone();
         // start relay
         let (relay_out, relay_in) = session.make_session(src.clone()).unwrap();
+        tx.send(()).unwrap();
         assert!(relay_out.join().is_ok());
         assert!(relay_in.join().is_ok());
 
@@ -370,7 +428,7 @@ mod test {
         // check for relayed contents
         // client <-- target
         assert_eq!(vec_from_read(&mut *src.wr_buff()), {
-            let mut rd_buff = session.dst_connector.stream(&connect_to).rd_buff();
+            let mut rd_buff = dst_connector.stream(&connect_to).rd_buff();
             rd_buff.set_position(0);
             vec_from_read(&mut *rd_buff)
         });
@@ -382,7 +440,7 @@ mod test {
                 vec_from_read(&mut *rd_buff)
             },
             {
-                let mut wr_buff = session.dst_connector.stream(&connect_to).wr_buff();
+                let mut wr_buff = dst_connector.stream(&connect_to).wr_buff();
                 wr_buff.set_position(0);
                 vec_from_read(&mut *wr_buff)
             }

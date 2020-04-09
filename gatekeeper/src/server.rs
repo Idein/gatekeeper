@@ -15,6 +15,38 @@ use crate::session::Session;
 
 use model::{ProtocolVersion, SocketAddr};
 
+#[derive(Debug)]
+pub struct SessionHandle {
+    handle: thread::JoinHandle<Result<(), Error>>,
+    tx: SyncSender<()>,
+}
+
+impl SessionHandle {
+    fn new(handle: thread::JoinHandle<Result<(), Error>>, tx: SyncSender<()>) -> Self {
+        Self { handle, tx }
+    }
+
+    fn stop(&self) -> Result<(), model::Error> {
+        use model::ErrorKind;
+        self.tx.send(()).map_err(|_| {
+            ErrorKind::message_fmt(format_args!("session stop fail: {:?}", self.handle)).into()
+        })
+    }
+
+    fn join(self) -> thread::Result<Result<(), Error>> {
+        match self.handle.join() {
+            Ok(res) => {
+                debug!("join session: {:?}", res);
+                Ok(res)
+            }
+            Err(err) => {
+                error!("join session error: {:?}", err);
+                Err(err)
+            }
+        }
+    }
+}
+
 pub struct Server<S, T, C> {
     config: ServerConfig,
     tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
@@ -24,6 +56,7 @@ pub struct Server<S, T, C> {
     /// make connection to service host
     connector: C,
     protocol_version: ProtocolVersion,
+    session: Vec<SessionHandle>,
 }
 
 /// spawn a thread send accepted stream to `tx`
@@ -47,24 +80,40 @@ where
 
 /// spawn a thread perform `Session.start`
 fn spawn_session<S, D, M>(
-    mut session: Session<D, M>,
+    session: Session<D, M>,
+    // termination message sender
+    tx: SyncSender<()>,
     addr: SocketAddr,
     strm: S,
-) -> thread::JoinHandle<Result<(), Error>>
+) -> SessionHandle
 where
     S: ByteStream + 'static,
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    thread::spawn(move || session.start(addr, strm))
+    SessionHandle::new(
+        thread::spawn(move || match session.start(addr, strm) {
+            Ok((relay1, relay2)) => {
+                if let Err(err) = relay1.join() {
+                    error!("relay1 join: {:?}", err);
+                }
+                if let Err(err) = relay2.join() {
+                    error!("relay2 join: {:?}", err);
+                }
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }),
+        tx,
+    )
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
     pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
         Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
-            config,
-            TcpBinder,
-            TcpUdpConnector,
+            config.clone(),
+            TcpBinder::new(config.client_rw_timeout),
+            TcpUdpConnector::new(config.server_rw_timeout),
         )
     }
 }
@@ -89,12 +138,13 @@ where
                 binder,
                 connector,
                 protocol_version: ProtocolVersion::from(5),
+                session: vec![],
             },
             tx,
         )
     }
 
-    pub fn serve(&self) -> Result<(), Error> {
+    pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
         spawn_acceptor(acceptor, self.tx_cmd.clone());
 
@@ -102,17 +152,27 @@ where
             use ServerCommand::*;
             info!("cmd: {:?}", cmd);
             match cmd {
-                Terminate => break,
+                Terminate => {
+                    // request to stop
+                    self.session.iter().for_each(|ss| {
+                        ss.stop().ok();
+                    });
+                    // waiting for a stop
+                    self.session.drain(..).for_each(|ss| {
+                        ss.join().ok();
+                    });
+                    break;
+                }
                 Connect(stream, addr) => {
                     info!("connect from: {}", addr);
-                    let session = Session::new(
+                    let (session, tx) = Session::new(
                         self.protocol_version,
                         self.connector.clone(),
                         NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
                     );
-                    spawn_session(session, addr, stream);
+                    self.session.push(spawn_session(session, tx, addr, stream));
                 }
             }
         }
@@ -138,7 +198,8 @@ mod test {
     fn server_shutdown() {
         let config = ServerConfig::default();
 
-        let (server, tx) = Server::with_binder(config, TcpBinder, TcpUdpConnector);
+        let (mut server, tx) =
+            Server::with_binder(config, TcpBinder::new(None), TcpUdpConnector::new(None));
         let shutdown = Arc::new(Mutex::new(SystemTime::now()));
         let th = {
             let shutdown = shutdown.clone();
@@ -177,7 +238,8 @@ mod test {
             ),
             src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
-        let (server, tx) = Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector);
+        let (mut server, tx) =
+            Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector::new(None));
         let th = thread::spawn(move || {
             server.serve().ok();
         });
