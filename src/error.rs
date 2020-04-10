@@ -2,7 +2,8 @@ use std::fmt;
 use std::fmt::Display;
 
 use failure::{Backtrace, Context, Fail};
-use model;
+
+use crate::model;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 

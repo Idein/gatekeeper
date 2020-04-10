@@ -1,7 +1,7 @@
 use std::io;
 use std::net;
 
-use model::{Error, ErrorKind};
+use crate::model::{Error, ErrorKind};
 
 pub trait PktStream {
     fn pkt_size(&self) -> usize;

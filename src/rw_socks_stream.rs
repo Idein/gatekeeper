@@ -5,8 +5,9 @@ use std::slice;
 
 use failure::ResultExt;
 use log::*;
-use model::{Error, ErrorKind, SocksStream};
 
+use crate::model;
+use crate::model::{Error, ErrorKind, SocksStream};
 use crate::raw_message::{self as raw, *};
 
 trait ReadSocksExt {

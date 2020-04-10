@@ -4,6 +4,7 @@ mod byte_stream;
 pub mod config;
 pub mod connector;
 pub mod error;
+pub mod model;
 mod pkt_stream;
 mod raw_message;
 mod relay;

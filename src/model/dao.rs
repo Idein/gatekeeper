@@ -1,5 +1,5 @@
-use crate::error::Error;
-use crate::model::*;
+use super::error::Error;
+use super::model::*;
 
 pub trait HaveDao {
     type Stream: SocksStream;

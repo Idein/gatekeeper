@@ -3,9 +3,9 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 use log::*;
-use model;
 
 use crate::byte_stream::{BoxedStream, ByteStream};
+use crate::model;
 
 pub fn spawn_relay(
     client_conn: BoxedStream,

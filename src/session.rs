@@ -8,12 +8,12 @@ use crate::auth_service::AuthService;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::error::Error;
+use crate::model;
+use crate::model::dao::*;
+use crate::model::error::ErrorKind;
+use crate::model::model::*;
 use crate::relay;
 use crate::rw_socks_stream::ReadWriteStream;
-
-use model::dao::*;
-use model::error::ErrorKind;
-use model::model::*;
 
 #[derive(Debug)]
 pub struct Session<D, S> {

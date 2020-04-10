@@ -1,8 +1,7 @@
 use std::io;
 
-use model::{Error, Method};
-
 use crate::byte_stream::{BoxedStream, ByteStream};
+use crate::model::{Error, Method};
 
 pub trait AuthService: Send {
     /// decide auth method from candidates
@@ -65,7 +64,7 @@ impl AuthService for NoAuthService {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use model::ErrorKind;
+    use crate::model::ErrorKind;
 
     #[derive(Debug)]
     pub struct RejectService;
