@@ -14,6 +14,25 @@ commands:
           paths:
             - ~/.cargo
             - target
+  install-rustup:
+    steps:
+      - restore_cache:
+          key: &cache-key-rustup cache-rustup-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "/tmp/rustup" }}
+      - run:
+          name: Install Rust
+          command: |
+            if rustup help >& /dev/null
+            then
+                rustup update
+            else
+                curl -sSfL https://sh.rustup.rs > rustup.sh
+                export RUST_CHANNEL=`cat rust-toolchain`
+                sh rustup.sh -y --default-toolchain ${RUST_CHANNEL}-x86_64-unknown-linux-gnu --profile minimal
+            fi
+      - save_cache:
+          key: *cache-key-rustup
+          paths:
+            - ~/.rustup
 
 
 jobs:
@@ -62,23 +81,7 @@ jobs:
             git config --global user.name "circleci"
             git merge --no-edit origin/master
       - run: cat rust-toolchain >> /tmp/rustup
-      - restore_cache:
-          key: &cache-key-rustup cache-rustup-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "/tmp/rustup" }}
-      - run:
-          name: Install Rust
-          command: |
-            if rustup help >& /dev/null
-            then
-                rustup update
-            else
-                curl -sSfL https://sh.rustup.rs > rustup.sh
-                export RUST_CHANNEL=`cat rust-toolchain`
-                sh rustup.sh -y --default-toolchain ${RUST_CHANNEL}-x86_64-unknown-linux-gnu --profile minimal
-            fi
-      - save_cache:
-          key: *cache-key-rustup
-          paths:
-            - ~/.rustup
+      - install-rustup
       - restore-rust-cache
       - run:
           name: Build Image
