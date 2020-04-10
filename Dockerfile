@@ -2,8 +2,7 @@ FROM rust:1.40.0-slim-stretch
 
 WORKDIR /gatekeeper
 
-COPY ./gatekeeper     gatekeeper
-COPY ./model          model
+COPY ./src            src
 COPY ./Cargo.lock     .
 COPY ./Cargo.toml     .
 COPY ./rust-toolchain .
