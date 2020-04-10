@@ -1,11 +1,47 @@
 version: 2.1
+commands:
+  restore-rust-cache:
+    steps:
+      - run: |
+          cat Cargo.lock >> /tmp/build-dep
+          cat rust-toolchain >> /tmp/build-dep
+      - restore_cache:
+          key: &cache-key-rust cache-cargo-target-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "/tmp/build-dep" }}
+  save-rust-cache:
+    steps:
+      - save_cache:
+          key: *cache-key-rust
+          paths:
+            - ~/.cargo
+            - target
+  install-rustup:
+    steps:
+      - restore_cache:
+          key: &cache-key-rustup cache-rustup-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "/tmp/rustup" }}
+      - run:
+          name: Install Rust
+          command: |
+            if rustup help >& /dev/null
+            then
+                rustup update
+            else
+                curl -sSfL https://sh.rustup.rs > rustup.sh
+                export RUST_CHANNEL=`cat rust-toolchain`
+                sh rustup.sh -y --default-toolchain ${RUST_CHANNEL}-x86_64-unknown-linux-gnu --profile minimal
+            fi
+      - save_cache:
+          key: *cache-key-rustup
+          paths:
+            - ~/.rustup
+
 
 jobs:
   build:
     docker:
       - image: circleci/rust:1.40.0-stretch
         environment:
-          RUST_BACKTRACE: 1 
+          RUST_BACKTRACE: 1
+          CARGO_HOME: /home/circleci/.cargo
           GIT_AUTHOR_NAME: circleci
           GIT_AUTHOR_EMAIL: circleci@example.com
     working_directory: /tmp/gatekeeper
@@ -17,6 +53,7 @@ jobs:
             git config --global user.email "circleci@example.com"
             git config --global user.name "circleci"
             git merge --no-edit origin/master
+      - restore-rust-cache
       - run:
           name: Build Gatekeeper
           command: |
@@ -25,6 +62,7 @@ jobs:
           name: Unit Test
           command: |
             cargo test --verbose -- --nocapture
+      - save-rust-cache
 
   integration_test:
     machine:
@@ -42,12 +80,9 @@ jobs:
             git config --global user.email "circleci@example.com"
             git config --global user.name "circleci"
             git merge --no-edit origin/master
-      - run:
-          name: Install Rust
-          command: |
-            curl -sSfL https://sh.rustup.rs > rustup.sh
-            export RUST_CHANNEL=`cat rust-toolchain`
-            sh rustup.sh -y --default-toolchain ${RUST_CHANNEL}-x86_64-unknown-linux-gnu --profile minimal
+      - run: cat rust-toolchain >> /tmp/rustup
+      - install-rustup
+      - restore-rust-cache
       - run:
           name: Build Image
           command: |
@@ -61,6 +96,7 @@ jobs:
           shell: /bin/bash --login -eo pipefail
           command: |
             cargo test --verbose -- --nocapture --ignored
+      - save-rust-cache
 
 workflows:
   version: 2
