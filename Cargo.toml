@@ -7,7 +7,7 @@ edition = "2018"
 license-file = "../LICENSE"
 keywords = ["proxy", "socks"]
 categories = ["network-programming"]
-readme = "../Readme.md"
+readme = "Readme.md"
 description = "A SOCKS proxy implementation"
 
 [lib]
