@@ -27,12 +27,12 @@
 ///!   .                 .                 .
 ///!   |                 |                 |
 ///!
-use derive_more::{Display, From, Into};
 use std::fmt;
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
 
+use derive_more::{Display, From, Into};
 use log::*;
 use regex::Regex;
 use serde::*;

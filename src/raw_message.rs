@@ -5,7 +5,7 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use model;
+use crate::model;
 
 pub const RESERVED: u8 = 0x00;
 

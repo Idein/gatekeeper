@@ -10,10 +10,10 @@ use crate::byte_stream::ByteStream;
 use crate::config::ServerConfig;
 use crate::connector::{Connector, TcpUdpConnector};
 use crate::error::Error;
+use crate::model;
+use crate::model::{ProtocolVersion, SocketAddr};
 use crate::server_command::ServerCommand;
 use crate::session::Session;
-
-use model::{ProtocolVersion, SocketAddr};
 
 #[derive(Debug)]
 pub struct SessionHandle {

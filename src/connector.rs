@@ -3,10 +3,10 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 use crate::byte_stream::ByteStream;
+use crate::model;
+use crate::model::error::Error;
+use crate::model::model::*;
 use crate::pkt_stream::{PktStream, UdpPktStream};
-
-use model::error::Error;
-use model::model::*;
 
 use failure::Fail;
 

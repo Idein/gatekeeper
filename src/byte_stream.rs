@@ -3,7 +3,7 @@ use std::io;
 use std::net::TcpStream;
 use std::ops::Deref;
 
-use model::Error;
+use crate::model::Error;
 
 /// read/write operations on byte stream
 pub trait ByteStream: fmt::Debug + io::Read + io::Write + Send {

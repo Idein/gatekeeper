@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::error::{Error, ErrorKind};
-use model::{ConnectRule, IpAddr, Ipv4Addr, SocketAddr};
+use crate::model::{ConnectRule, IpAddr, Ipv4Addr, SocketAddr};
 
 use failure::ResultExt;
 use serde_yaml;

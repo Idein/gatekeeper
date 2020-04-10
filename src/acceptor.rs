@@ -7,6 +7,7 @@ use log::*;
 
 use crate::byte_stream::ByteStream;
 use crate::error::Error;
+use crate::model;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
