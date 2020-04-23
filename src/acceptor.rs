@@ -6,12 +6,22 @@ use failure::Fail;
 use log::*;
 
 use crate::byte_stream::ByteStream;
-use crate::error::Error;
 use crate::model;
+use crate::model::Error;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
     rw_timeout: Option<Duration>,
+}
+
+impl TcpAcceptor {
+    fn new(listener: TcpListener, rw_timeout: Option<Duration>) -> Result<Self, Error> {
+        listener.set_nonblocking(true)?;
+        Ok(Self {
+            listener,
+            rw_timeout,
+        })
+    }
 }
 
 impl Iterator for TcpAcceptor {
@@ -63,10 +73,7 @@ impl Binder for TcpBinder {
             .reuse_address(true)?
             .bind(&addr)
             .map_err(|err| addr_error(err, addr))?;
-        Ok(TcpAcceptor {
-            listener: tcp.listen(0)?,
-            rw_timeout: self.rw_timeout,
-        })
+        TcpAcceptor::new(tcp.listen(0)?, self.rw_timeout)
     }
 }
 
