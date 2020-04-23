@@ -1,5 +1,6 @@
 use std::io;
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::mpsc::SyncSender;
 use std::time::Duration;
 
 use failure::Fail;
@@ -7,19 +8,26 @@ use log::*;
 
 use crate::byte_stream::ByteStream;
 use crate::model;
-use crate::model::Error;
+use crate::model::{Error, ErrorKind};
+use crate::server_command::ServerCommand;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
     rw_timeout: Option<Duration>,
+    tx_cmd: SyncSender<ServerCommand<TcpStream>>,
 }
 
 impl TcpAcceptor {
-    fn new(listener: TcpListener, rw_timeout: Option<Duration>) -> Result<Self, Error> {
+    fn new(
+        listener: TcpListener,
+        rw_timeout: Option<Duration>,
+        tx_cmd: SyncSender<ServerCommand<TcpStream>>,
+    ) -> Result<Self, Error> {
         listener.set_nonblocking(true)?;
         Ok(Self {
             listener,
             rw_timeout,
+            tx_cmd,
         })
     }
 }
@@ -39,6 +47,7 @@ impl Iterator for TcpAcceptor {
                 }
                 Some((tcp, addr))
             }
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => None,
             Err(err) => {
                 error!("accept error: {}", err);
                 trace!("accept error: {:?}", err);
@@ -56,11 +65,12 @@ pub trait Binder {
 
 pub struct TcpBinder {
     rw_timeout: Option<Duration>,
+    tx_cmd: SyncSender<ServerCommand<TcpStream>>,
 }
 
 impl TcpBinder {
-    pub fn new(rw_timeout: Option<Duration>) -> Self {
-        Self { rw_timeout }
+    pub fn new(rw_timeout: Option<Duration>, tx_cmd: SyncSender<ServerCommand<TcpStream>>) -> Self {
+        Self { rw_timeout, tx_cmd }
     }
 }
 
@@ -73,12 +83,11 @@ impl Binder for TcpBinder {
             .reuse_address(true)?
             .bind(&addr)
             .map_err(|err| addr_error(err, addr))?;
-        TcpAcceptor::new(tcp.listen(0)?, self.rw_timeout)
+        TcpAcceptor::new(tcp.listen(0)?, self.rw_timeout, self.tx_cmd.clone())
     }
 }
 
 fn addr_error(io_err: io::Error, addr: SocketAddr) -> model::Error {
-    use model::ErrorKind;
     match io_err.kind() {
         io::ErrorKind::AddrInUse => ErrorKind::AddressAlreadInUse { addr }.into(),
         io::ErrorKind::AddrNotAvailable => ErrorKind::AddressNotAvailable { addr }.into(),

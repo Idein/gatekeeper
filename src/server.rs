@@ -1,5 +1,5 @@
 use std::net::TcpStream;
-use std::sync::mpsc::{self, SyncSender};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 
 use log::*;
@@ -49,8 +49,8 @@ impl SessionHandle {
 
 pub struct Server<S, T, C> {
     config: ServerConfig,
-    tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
-    rx_cmd: mpsc::Receiver<ServerCommand<S>>,
+    tx_cmd: SyncSender<ServerCommand<S>>,
+    rx_cmd: Receiver<ServerCommand<S>>,
     /// bind server address
     binder: T,
     /// make connection to service host
@@ -109,11 +109,21 @@ where
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
-    pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
-        Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
-            config.clone(),
-            TcpBinder::new(config.client_rw_timeout),
-            TcpUdpConnector::new(config.server_rw_timeout),
+    pub fn new(config: ServerConfig) -> (Self, SyncSender<ServerCommand<TcpStream>>) {
+        let (tx, rx) = mpsc::sync_channel(0);
+        let binder = TcpBinder::new(config.client_rw_timeout, tx.clone());
+        let connector = TcpUdpConnector::new(config.server_rw_timeout);
+        (
+            Self {
+                config,
+                tx_cmd: tx.clone(),
+                rx_cmd: rx,
+                binder,
+                connector,
+                protocol_version: ProtocolVersion::from(5),
+                session: vec![],
+            },
+            tx,
         )
     }
 }
@@ -128,7 +138,7 @@ where
         config: ServerConfig,
         binder: T,
         connector: C,
-    ) -> (Self, mpsc::SyncSender<ServerCommand<S>>) {
+    ) -> (Self, SyncSender<ServerCommand<S>>) {
         let (tx, rx) = mpsc::sync_channel(0);
         (
             Self {
