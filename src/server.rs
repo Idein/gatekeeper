@@ -89,7 +89,7 @@ where
 
 /// spawn a thread perform `Session.start`
 fn spawn_session<S, D, M>(
-    session: Session<D, M>,
+    session: Session<D, M, S>,
     // termination message sender
     tx: SyncSender<()>,
     addr: SocketAddr,
@@ -205,14 +205,17 @@ where
                         NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
+                        self.tx_cmd.clone(),
                     );
                     self.session
                         .insert(session.id, spawn_session(session, tx, addr, stream));
                 }
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
+                        debug!("stopping session: {}", id);
                         session.stop().ok();
                         session.join().ok();
+                        debug!("session is stopped: {}", id);
                     } else {
                         error!("session not found: {}", id);
                     }

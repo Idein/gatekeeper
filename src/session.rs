@@ -15,6 +15,7 @@ use crate::model::error::ErrorKind;
 use crate::model::model::*;
 use crate::relay;
 use crate::rw_socks_stream::ReadWriteStream;
+use crate::server_command::ServerCommand;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SessionId(pub u64);
@@ -32,29 +33,32 @@ impl fmt::Display for SessionId {
 }
 
 #[derive(Debug)]
-pub struct Session<D, S> {
+pub struct Session<D, A, S> {
     pub id: SessionId,
     pub version: ProtocolVersion,
     pub dst_connector: D,
-    pub authorizer: S,
+    pub authorizer: A,
     pub server_addr: SocketAddr,
     pub conn_rule: ConnectRule,
-    // termination message receiver
+    /// notify termination to the main thread
+    tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
+    /// termination message receiver
     rx: mpsc::Receiver<()>,
 }
 
-impl<D, S> Session<D, S>
+impl<D, A, S> Session<D, A, S>
 where
     D: Connector,
-    S: AuthService,
+    A: AuthService,
 {
     pub fn new(
         id: SessionId,
         version: ProtocolVersion,
         dst_connector: D,
-        authorizer: S,
+        authorizer: A,
         server_addr: SocketAddr,
         conn_rule: ConnectRule,
+        tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
     ) -> (Self, mpsc::SyncSender<()>) {
         let (tx, rx) = mpsc::sync_channel(1);
         (
@@ -65,6 +69,7 @@ where
                 authorizer,
                 server_addr,
                 conn_rule,
+                tx_cmd,
                 rx,
             },
             tx,
@@ -120,11 +125,12 @@ where
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
     ) -> Result<(JoinHandle<()>, JoinHandle<()>), Error> {
-        self.make_session(src_conn).map_err(|err| {
-            error!("session error: {}", err);
-            trace!("session error: {:?}", err);
-            err.into()
-        })
+        let id = self.id;
+        let tx_cmd = self.tx_cmd.clone();
+        let res = self.make_session(src_conn).map_err(Into::into);
+        // main thread must be alive
+        tx_cmd.send(ServerCommand::Disconnect(id)).unwrap();
+        res
     }
 }
 
