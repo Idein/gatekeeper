@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
@@ -15,8 +16,24 @@ use crate::model::model::*;
 use crate::relay;
 use crate::rw_socks_stream::ReadWriteStream;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SessionId(pub u64);
+
+impl From<u64> for SessionId {
+    fn from(id: u64) -> Self {
+        Self(id)
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SessionId({})", self.0)
+    }
+}
+
 #[derive(Debug)]
 pub struct Session<D, S> {
+    pub id: SessionId,
     pub version: ProtocolVersion,
     pub dst_connector: D,
     pub authorizer: S,
@@ -32,6 +49,7 @@ where
     S: AuthService,
 {
     pub fn new(
+        id: SessionId,
         version: ProtocolVersion,
         dst_connector: D,
         authorizer: S,
@@ -41,6 +59,7 @@ where
         let (tx, rx) = mpsc::sync_channel(1);
         (
             Self {
+                id,
                 version,
                 dst_connector,
                 authorizer,

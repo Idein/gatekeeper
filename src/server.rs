@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::{
     mpsc::{self, Receiver, SyncSender},
@@ -6,6 +7,7 @@ use std::sync::{
 use std::thread;
 
 use log::*;
+use rand::prelude::*;
 
 use crate::acceptor::{Binder, TcpBinder};
 use crate::auth_service::{AuthService, NoAuthService};
@@ -16,7 +18,7 @@ use crate::error::Error;
 use crate::model;
 use crate::model::{ProtocolVersion, SocketAddr};
 use crate::server_command::ServerCommand;
-use crate::session::Session;
+use crate::session::{Session, SessionId};
 
 #[derive(Debug)]
 pub struct SessionHandle {
@@ -61,7 +63,9 @@ pub struct Server<S, T, C> {
     /// make connection to service host
     connector: C,
     protocol_version: ProtocolVersion,
-    session: Vec<SessionHandle>,
+    session: HashMap<SessionId, SessionHandle>,
+    /// random context for generating SessionIds
+    id_rng: ThreadRng,
 }
 
 /// spawn a thread send accepted stream to `tx`
@@ -151,10 +155,22 @@ where
                 tx_acceptor_done,
                 connector,
                 protocol_version: ProtocolVersion::from(5),
-                session: vec![],
+                session: HashMap::new(),
+                id_rng: thread_rng(),
             },
             tx,
         )
+    }
+
+    fn next_session_id(&mut self) -> SessionId {
+        loop {
+            let next_candidate = self.id_rng.next_u64().into();
+            if self.session.contains_key(&next_candidate) {
+                continue;
+            }
+            debug!("next session id is issued: {}", next_candidate);
+            return next_candidate;
+        }
     }
 
     pub fn serve(&mut self) -> Result<(), Error> {
@@ -166,15 +182,14 @@ where
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
-                    info!("terminating sessions...");
                     trace!("stopping accept thread...");
                     self.tx_acceptor_done.send(()).ok();
                     trace!("stopping session threads...");
-                    self.session.iter().for_each(|ss| {
+                    self.session.iter().for_each(|(_, ss)| {
                         ss.stop().ok();
                     });
 
-                    self.session.drain(..).for_each(|ss| {
+                    self.session.drain().for_each(|(_, ss)| {
                         ss.join().ok();
                     });
                     trace!("session threads are stopped");
@@ -183,15 +198,24 @@ where
                     break;
                 }
                 Connect(stream, addr) => {
-                    info!("connect from: {}", addr);
                     let (session, tx) = Session::new(
+                        self.next_session_id(),
                         self.protocol_version,
                         self.connector.clone(),
                         NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
                     );
-                    self.session.push(spawn_session(session, tx, addr, stream));
+                    self.session
+                        .insert(session.id, spawn_session(session, tx, addr, stream));
+                }
+                Disconnect(id) => {
+                    if let Some(session) = self.session.remove(&id) {
+                        session.stop().ok();
+                        session.join().ok();
+                    } else {
+                        error!("session not found: {}", id);
+                    }
                 }
             }
         }
