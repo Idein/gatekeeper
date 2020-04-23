@@ -60,25 +60,31 @@ fn dur_to_timeval<T: TimeValLike>(dur: Duration) -> io::Result<T> {
         })
 }
 
+/// Convert sockaddr_storage to SocketAddr
+///
+/// * `storage`
+///   The target value contains an address.
+///   The actual type of the value depends on it's address family.
+/// * `len`
+///   The sizeof `storage` in bytes.
+///   This should larger than or equals to the size of the *actual* type of `storage`.
 fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<SocketAddr> {
     match storage.ss_family as libc::c_int {
         libc::AF_INET => {
             assert!(len as usize >= mem::size_of::<libc::sockaddr_in>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in) };
-            Ok(SocketAddr::V4(SocketAddrV4::new(
-                addr.sin_addr.s_addr.into(),
-                addr.sin_port,
-            )))
+            Ok(SocketAddrV4::new(addr.sin_addr.s_addr.into(), addr.sin_port).into())
         }
         libc::AF_INET6 => {
             assert!(len as usize >= mem::size_of::<libc::sockaddr_in6>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in6) };
-            Ok(SocketAddr::V6(SocketAddrV6::new(
+            Ok(SocketAddrV6::new(
                 addr.sin6_addr.s6_addr.into(),
                 addr.sin6_port,
                 addr.sin6_flowinfo,
                 addr.sin6_scope_id,
-            )))
+            )
+            .into())
         }
         af_family => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
