@@ -19,6 +19,7 @@ pub struct TcpAcceptor {
     rw_timeout: Option<Duration>,
     /// receive termination message
     rx: Arc<Mutex<Receiver<()>>>,
+    /// timeout for accept
     accept_timeout: Option<Duration>,
 }
 
@@ -28,14 +29,13 @@ impl TcpAcceptor {
         rw_timeout: Option<Duration>,
         rx: Arc<Mutex<Receiver<()>>>,
         accept_timeout: Option<Duration>,
-    ) -> Result<Self, Error> {
-        listener.set_nonblocking(true)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             listener,
             rw_timeout,
             rx,
             accept_timeout,
-        })
+        }
     }
 
     fn check_done(&self) -> Result<bool, Error> {
@@ -123,12 +123,12 @@ impl Binder for TcpBinder {
             .reuse_address(true)?
             .bind(&addr)
             .map_err(|err| addr_error(err, addr))?;
-        TcpAcceptor::new(
+        Ok(TcpAcceptor::new(
             tcp.listen(0)?,
             self.rw_timeout,
             self.rx.clone(),
             self.accept_timeout,
-        )
+        ))
     }
 }
 
