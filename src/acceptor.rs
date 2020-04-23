@@ -12,6 +12,7 @@ use log::*;
 use crate::byte_stream::ByteStream;
 use crate::model;
 use crate::model::{Error, ErrorKind};
+use crate::tcp_listener_ext::*;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
