@@ -12,12 +12,16 @@ pub trait TcpListenerExt {
 }
 
 impl TcpListenerExt for TcpListener {
+    /// accept(2) with timeout
+    ///
+    /// * `timeout`
+    ///   Timeout for _accept_. If the value is `None`, wait connection indefinitely.
     fn accept_timeout(&self, timeout: Option<Duration>) -> io::Result<(TcpStream, SocketAddr)> {
         use nix::sys::select::*;
 
         let fd = self.as_raw_fd();
 
-        let mut tm = dur_to_timeval::<TimeVal>(timeout.unwrap_or_default())?;
+        let mut tm = timeout.map(dur_to_timeval::<TimeVal>).transpose()?;
 
         let mut fds = FdSet::new();
         fds.insert(fd);
@@ -43,6 +47,7 @@ impl TcpListenerExt for TcpListener {
     }
 }
 
+/// Convert Duration to timeval in microseconds
 fn dur_to_timeval<T: TimeValLike>(dur: Duration) -> io::Result<T> {
     dur.as_micros()
         .try_into()
