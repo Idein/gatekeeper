@@ -1,5 +1,8 @@
 use std::net::TcpStream;
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::{
+    mpsc::{self, Receiver, SyncSender},
+    Arc, Mutex,
+};
 use std::thread;
 
 use log::*;
@@ -53,6 +56,8 @@ pub struct Server<S, T, C> {
     rx_cmd: Receiver<ServerCommand<S>>,
     /// bind server address
     binder: T,
+    /// send termination message to the acceptor
+    tx_acceptor_done: SyncSender<()>,
     /// make connection to service host
     connector: C,
     protocol_version: ProtocolVersion,
@@ -109,21 +114,13 @@ where
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
-    pub fn new(config: ServerConfig) -> (Self, SyncSender<ServerCommand<TcpStream>>) {
-        let (tx, rx) = mpsc::sync_channel(0);
-        let binder = TcpBinder::new(config.client_rw_timeout, tx.clone());
-        let connector = TcpUdpConnector::new(config.server_rw_timeout);
-        (
-            Self {
-                config,
-                tx_cmd: tx.clone(),
-                rx_cmd: rx,
-                binder,
-                connector,
-                protocol_version: ProtocolVersion::from(5),
-                session: vec![],
-            },
-            tx,
+    pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
+        let (tx_done, rx_done) = mpsc::sync_channel(1);
+        Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
+            config.clone(),
+            TcpBinder::new(config.client_rw_timeout, Arc::new(Mutex::new(rx_done))),
+            tx_done,
+            TcpUdpConnector::new(config.server_rw_timeout),
         )
     }
 }
@@ -137,6 +134,7 @@ where
     pub fn with_binder(
         config: ServerConfig,
         binder: T,
+        tx_acceptor_done: SyncSender<()>,
         connector: C,
     ) -> (Self, SyncSender<ServerCommand<S>>) {
         let (tx, rx) = mpsc::sync_channel(0);
@@ -146,6 +144,7 @@ where
                 tx_cmd: tx.clone(),
                 rx_cmd: rx,
                 binder,
+                tx_acceptor_done,
                 connector,
                 protocol_version: ProtocolVersion::from(5),
                 session: vec![],
@@ -163,6 +162,8 @@ where
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
+                    self.tx_acceptor_done.send(()).ok();
+
                     // request to stop
                     self.session.iter().for_each(|ss| {
                         ss.stop().ok();

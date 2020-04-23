@@ -1,6 +1,9 @@
 use std::io;
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::mpsc::SyncSender;
+use std::sync::{
+    mpsc::{self, Receiver},
+    Arc, Mutex,
+};
 use std::time::Duration;
 
 use failure::Fail;
@@ -9,50 +12,70 @@ use log::*;
 use crate::byte_stream::ByteStream;
 use crate::model;
 use crate::model::{Error, ErrorKind};
-use crate::server_command::ServerCommand;
 
 pub struct TcpAcceptor {
     listener: TcpListener,
     rw_timeout: Option<Duration>,
-    tx_cmd: SyncSender<ServerCommand<TcpStream>>,
+    /// receive termination message
+    rx: Arc<Mutex<Receiver<()>>>,
 }
 
 impl TcpAcceptor {
     fn new(
         listener: TcpListener,
         rw_timeout: Option<Duration>,
-        tx_cmd: SyncSender<ServerCommand<TcpStream>>,
+        rx: Arc<Mutex<Receiver<()>>>,
     ) -> Result<Self, Error> {
         listener.set_nonblocking(true)?;
         Ok(Self {
             listener,
             rw_timeout,
-            tx_cmd,
+            rx,
         })
+    }
+
+    fn check_done(&self) -> Result<bool, Error> {
+        use mpsc::TryRecvError;
+        match self.rx.lock()?.try_recv() {
+            Ok(()) => Ok(true),
+            Err(TryRecvError::Empty) => Ok(false),
+            Err(TryRecvError::Disconnected) => Err(ErrorKind::disconnected("acceptor").into()),
+        }
     }
 }
 
 impl Iterator for TcpAcceptor {
     type Item = (TcpStream, SocketAddr);
     fn next(&mut self) -> Option<Self::Item> {
-        match self.listener.accept() {
-            Ok((tcp, addr)) => {
-                if let Err(err) = tcp.set_read_timeout(self.rw_timeout.clone()) {
-                    error!("set_read_timeout({:?}): {:?}", self.rw_timeout, err);
-                    return None;
+        match self.check_done() {
+            Ok(true) => return None,
+            Ok(false) => {}
+            Err(_) => return None,
+        }
+        loop {
+            return match self.listener.accept() {
+                Ok((tcp, addr)) => {
+                    if let Err(err) = tcp.set_read_timeout(self.rw_timeout.clone()) {
+                        error!("set_read_timeout({:?}): {:?}", self.rw_timeout, err);
+                        return None;
+                    }
+                    if let Err(err) = tcp.set_write_timeout(self.rw_timeout.clone()) {
+                        error!("set_write_timeout({:?}): {:?}", self.rw_timeout, err);
+                        return None;
+                    }
+                    Some((tcp, addr))
                 }
-                if let Err(err) = tcp.set_write_timeout(self.rw_timeout.clone()) {
-                    error!("set_write_timeout({:?}): {:?}", self.rw_timeout, err);
-                    return None;
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => match self.check_done() {
+                    Ok(true) => None,
+                    Ok(false) => continue,
+                    Err(_) => None,
+                },
+                Err(err) => {
+                    error!("accept error: {}", err);
+                    trace!("accept error: {:?}", err);
+                    None
                 }
-                Some((tcp, addr))
-            }
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => None,
-            Err(err) => {
-                error!("accept error: {}", err);
-                trace!("accept error: {:?}", err);
-                None
-            }
+            };
         }
     }
 }
@@ -65,12 +88,13 @@ pub trait Binder {
 
 pub struct TcpBinder {
     rw_timeout: Option<Duration>,
-    tx_cmd: SyncSender<ServerCommand<TcpStream>>,
+    /// receiver for Acceptor termination message
+    rx: Arc<Mutex<Receiver<()>>>,
 }
 
 impl TcpBinder {
-    pub fn new(rw_timeout: Option<Duration>, tx_cmd: SyncSender<ServerCommand<TcpStream>>) -> Self {
-        Self { rw_timeout, tx_cmd }
+    pub fn new(rw_timeout: Option<Duration>, rx: Arc<Mutex<Receiver<()>>>) -> Self {
+        Self { rw_timeout, rx }
     }
 }
 
@@ -83,7 +107,7 @@ impl Binder for TcpBinder {
             .reuse_address(true)?
             .bind(&addr)
             .map_err(|err| addr_error(err, addr))?;
-        TcpAcceptor::new(tcp.listen(0)?, self.rw_timeout, self.tx_cmd.clone())
+        TcpAcceptor::new(tcp.listen(0)?, self.rw_timeout, self.rx.clone())
     }
 }
 
