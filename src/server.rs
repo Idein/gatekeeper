@@ -4,7 +4,6 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::thread;
-use std::time::Duration;
 
 use log::*;
 
@@ -122,8 +121,7 @@ impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
             TcpBinder::new(
                 config.client_rw_timeout,
                 Arc::new(Mutex::new(rx_done)),
-                // FIXME: add parameter to ServerConfig
-                Some(Duration::from_secs(3)),
+                config.accept_timeout,
             ),
             tx_done,
             TcpUdpConnector::new(config.server_rw_timeout),
