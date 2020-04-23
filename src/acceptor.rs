@@ -69,11 +69,14 @@ impl Iterator for TcpAcceptor {
                     }
                     Some((tcp, addr))
                 }
-                Err(err) if err.kind() == io::ErrorKind::TimedOut => match self.check_done() {
-                    Ok(true) => None,
-                    Ok(false) => continue,
-                    Err(_) => None,
-                },
+                Err(err) if err.kind() == io::ErrorKind::TimedOut => {
+                    // trace!("accept timeout");
+                    match self.check_done() {
+                        Ok(true) => None,
+                        Ok(false) => continue,
+                        Err(_) => None,
+                    }
+                }
                 Err(err) => {
                     error!("accept error: {}", err);
                     trace!("accept error: {:?}", err);

@@ -161,23 +161,27 @@ where
 
     pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
-        spawn_acceptor(acceptor, self.tx_cmd.clone());
+        let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone());
 
         while let Ok(cmd) = self.rx_cmd.recv() {
             use ServerCommand::*;
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
+                    info!("terminating sessions...");
+                    trace!("stopping accept thread...");
                     self.tx_acceptor_done.send(()).ok();
-
-                    // request to stop
+                    trace!("stopping session threads...");
                     self.session.iter().for_each(|ss| {
                         ss.stop().ok();
                     });
-                    // waiting for a stop
+
                     self.session.drain(..).for_each(|ss| {
                         ss.join().ok();
                     });
+                    trace!("session threads are stopped");
+                    accept_th.join().ok();
+                    trace!("accept thread is stopped");
                     break;
                 }
                 Connect(stream, addr) => {
