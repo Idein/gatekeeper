@@ -4,6 +4,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::thread;
+use std::time::Duration;
 
 use log::*;
 
@@ -118,7 +119,12 @@ impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
         let (tx_done, rx_done) = mpsc::sync_channel(1);
         Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
             config.clone(),
-            TcpBinder::new(config.client_rw_timeout, Arc::new(Mutex::new(rx_done))),
+            TcpBinder::new(
+                config.client_rw_timeout,
+                Arc::new(Mutex::new(rx_done)),
+                // FIXME: add parameter to ServerConfig
+                Some(Duration::from_secs(3)),
+            ),
             tx_done,
             TcpUdpConnector::new(config.server_rw_timeout),
         )

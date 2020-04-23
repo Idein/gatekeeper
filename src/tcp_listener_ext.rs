@@ -8,16 +8,16 @@ use std::time::Duration;
 use nix::sys::time::{TimeVal, TimeValLike};
 
 pub trait TcpListenerExt {
-    fn accept_timeout(&self, timeout: Duration) -> io::Result<(TcpStream, SocketAddr)>;
+    fn accept_timeout(&self, timeout: Option<Duration>) -> io::Result<(TcpStream, SocketAddr)>;
 }
 
 impl TcpListenerExt for TcpListener {
-    fn accept_timeout(&self, timeout: Duration) -> io::Result<(TcpStream, SocketAddr)> {
+    fn accept_timeout(&self, timeout: Option<Duration>) -> io::Result<(TcpStream, SocketAddr)> {
         use nix::sys::select::*;
 
         let fd = self.as_raw_fd();
 
-        let mut tm = dur_to_timeval::<TimeVal>(timeout)?;
+        let mut tm = dur_to_timeval::<TimeVal>(timeout.unwrap_or_default())?;
 
         let mut fds = FdSet::new();
         fds.insert(fd);

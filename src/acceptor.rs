@@ -19,6 +19,7 @@ pub struct TcpAcceptor {
     rw_timeout: Option<Duration>,
     /// receive termination message
     rx: Arc<Mutex<Receiver<()>>>,
+    accept_timeout: Option<Duration>,
 }
 
 impl TcpAcceptor {
@@ -26,12 +27,14 @@ impl TcpAcceptor {
         listener: TcpListener,
         rw_timeout: Option<Duration>,
         rx: Arc<Mutex<Receiver<()>>>,
+        accept_timeout: Option<Duration>,
     ) -> Result<Self, Error> {
         listener.set_nonblocking(true)?;
         Ok(Self {
             listener,
             rw_timeout,
             rx,
+            accept_timeout,
         })
     }
 
@@ -54,7 +57,7 @@ impl Iterator for TcpAcceptor {
             Err(_) => return None,
         }
         loop {
-            return match self.listener.accept() {
+            return match self.listener.accept_timeout(self.accept_timeout.clone()) {
                 Ok((tcp, addr)) => {
                     if let Err(err) = tcp.set_read_timeout(self.rw_timeout.clone()) {
                         error!("set_read_timeout({:?}): {:?}", self.rw_timeout, err);
@@ -66,7 +69,7 @@ impl Iterator for TcpAcceptor {
                     }
                     Some((tcp, addr))
                 }
-                Err(err) if err.kind() == io::ErrorKind::WouldBlock => match self.check_done() {
+                Err(err) if err.kind() == io::ErrorKind::TimedOut => match self.check_done() {
                     Ok(true) => None,
                     Ok(false) => continue,
                     Err(_) => None,
@@ -91,11 +94,20 @@ pub struct TcpBinder {
     rw_timeout: Option<Duration>,
     /// receiver for Acceptor termination message
     rx: Arc<Mutex<Receiver<()>>>,
+    accept_timeout: Option<Duration>,
 }
 
 impl TcpBinder {
-    pub fn new(rw_timeout: Option<Duration>, rx: Arc<Mutex<Receiver<()>>>) -> Self {
-        Self { rw_timeout, rx }
+    pub fn new(
+        rw_timeout: Option<Duration>,
+        rx: Arc<Mutex<Receiver<()>>>,
+        accept_timeout: Option<Duration>,
+    ) -> Self {
+        Self {
+            rw_timeout,
+            rx,
+            accept_timeout,
+        }
     }
 }
 
@@ -108,7 +120,12 @@ impl Binder for TcpBinder {
             .reuse_address(true)?
             .bind(&addr)
             .map_err(|err| addr_error(err, addr))?;
-        TcpAcceptor::new(tcp.listen(0)?, self.rw_timeout, self.rx.clone())
+        TcpAcceptor::new(
+            tcp.listen(0)?,
+            self.rw_timeout,
+            self.rx.clone(),
+            self.accept_timeout,
+        )
     }
 }
 
