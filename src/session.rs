@@ -238,7 +238,9 @@ mod test {
             command: Command::Connect,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
+        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
         let (session, _) = Session::new(
+            0.into(),
             5.into(),
             BufferConnector::<BufferStream> {
                 strms: vec![(
@@ -251,6 +253,7 @@ mod test {
             RejectService,
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
         println!("session: {:?}", session);
         let src = BufferStream::new(vec![5, 1, 0].into(), vec![].into());
@@ -273,7 +276,9 @@ mod test {
             command: Command::UdpAssociate,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
+        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
         let (session, _) = Session::new(
+            1.into(),
             5.into(),
             BufferConnector::<BufferStream> {
                 strms: vec![(
@@ -286,6 +291,7 @@ mod test {
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
         println!("session: {:?}", session);
 
@@ -307,7 +313,9 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
         let (session, _) = Session::new(
+            2.into(),
             version,
             BufferConnector::<BufferStream> {
                 strms: vec![(
@@ -320,6 +328,7 @@ mod test {
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::none(),
+            tx,
         );
         println!("session: {:?}", session);
 
@@ -356,7 +365,9 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
         let (session, _) = Session::new(
+            3.into(),
             version,
             BufferConnector::<BufferStream> {
                 strms: vec![(connect_to.clone(), Err(ConnectError::ConnectionRefused))]
@@ -366,6 +377,7 @@ mod test {
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
         println!("session: {:?}", session);
 
@@ -416,7 +428,9 @@ mod test {
         use io::Write;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::Domain("example.com".into(), 5123);
+        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(2);
         let (session, tx) = Session::new(
+            4.into(),
             version,
             BufferConnector {
                 strms: vec![(
@@ -432,6 +446,7 @@ mod test {
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
 
         // length of SOCKS message (len MethodCandidates + len ConnectRequest)
@@ -464,10 +479,9 @@ mod test {
         };
         let dst_connector = session.dst_connector.clone();
         // start relay
-        let (relay_out, relay_in) = session.make_session(src.clone()).unwrap();
+        let relay = session.make_session(src.clone()).unwrap();
         tx.send(()).unwrap();
-        assert!(relay_out.join().is_ok());
-        assert!(relay_in.join().is_ok());
+        assert!(relay.join().is_ok());
 
         // check for replied command from Session to client
         {
