@@ -17,37 +17,34 @@ use crate::connector::{Connector, TcpUdpConnector};
 use crate::error::Error;
 use crate::model;
 use crate::model::{ProtocolVersion, SocketAddr};
+use crate::relay::RelayHandle;
 use crate::server_command::ServerCommand;
 use crate::session::{Session, SessionId};
 
 #[derive(Debug)]
 pub struct SessionHandle {
-    handle: thread::JoinHandle<Result<(), Error>>,
+    handle: thread::JoinHandle<Result<RelayHandle, model::Error>>,
     tx: SyncSender<()>,
 }
 
 impl SessionHandle {
-    fn new(handle: thread::JoinHandle<Result<(), Error>>, tx: SyncSender<()>) -> Self {
+    fn new(
+        handle: thread::JoinHandle<Result<RelayHandle, model::Error>>,
+        tx: SyncSender<()>,
+    ) -> Self {
         Self { handle, tx }
     }
 
     fn stop(&self) -> Result<(), model::Error> {
-        use model::ErrorKind;
-        self.tx.send(()).map_err(|_| {
-            ErrorKind::message_fmt(format_args!("session stop fail: {:?}", self.handle)).into()
-        })
+        self.tx
+            .send(())
+            .map_err(|_| model::ErrorKind::disconnected("session").into())
     }
 
-    fn join(self) -> thread::Result<Result<(), Error>> {
-        match self.handle.join() {
-            Ok(res) => {
-                debug!("join session: {:?}", res);
-                Ok(res)
-            }
-            Err(err) => {
-                error!("join session error: {:?}", err);
-                Err(err)
-            }
+    fn join(self) -> thread::Result<Result<(), model::Error>> {
+        match self.handle.join()? {
+            Ok(relay) => relay.join(),
+            Err(err) => Ok(Err(err)),
         }
     }
 }
@@ -100,21 +97,7 @@ where
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    SessionHandle::new(
-        thread::spawn(move || match session.start(addr, strm) {
-            Ok((relay1, relay2)) => {
-                if let Err(err) = relay1.join() {
-                    error!("relay1 join: {:?}", err);
-                }
-                if let Err(err) = relay2.join() {
-                    error!("relay2 join: {:?}", err);
-                }
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }),
-        tx,
-    )
+    SessionHandle::new(thread::spawn(move || session.start(addr, strm)), tx)
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {

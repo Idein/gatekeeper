@@ -1,19 +1,17 @@
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::mpsc;
-use std::thread::JoinHandle;
 
 use log::*;
 
 use crate::auth_service::AuthService;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
-use crate::error::Error;
 use crate::model;
 use crate::model::dao::*;
-use crate::model::error::ErrorKind;
 use crate::model::model::*;
-use crate::relay;
+use crate::model::{Error, ErrorKind};
+use crate::relay::{self, RelayHandle};
 use crate::rw_socks_stream::ReadWriteStream;
 use crate::server_command::ServerCommand;
 
@@ -88,7 +86,7 @@ where
     fn make_session<'a>(
         self,
         mut src_conn: impl ByteStream + 'a,
-    ) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error> {
+    ) -> Result<RelayHandle, model::Error> {
         let mut socks = ReadWriteStream::new(&mut src_conn);
 
         let select = negotiate_auth_method(self.version, &self.authorizer, &mut socks)?;
@@ -125,7 +123,7 @@ where
         self,
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
-    ) -> Result<(JoinHandle<()>, JoinHandle<()>), Error> {
+    ) -> Result<RelayHandle, Error> {
         let _guard = DisconnectGuard::new(self.id, self.tx_cmd.clone());
         Ok(self.make_session(src_conn)?)
     }
