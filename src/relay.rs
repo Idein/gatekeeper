@@ -5,7 +5,7 @@ use std::thread::{self, JoinHandle};
 use log::*;
 
 use crate::byte_stream::{BoxedStream, ByteStream};
-use crate::model::Error;
+use crate::model::{Error, ErrorKind};
 use crate::server_command::ServerCommand;
 use crate::session::{DisconnectGuard, SessionId};
 
@@ -54,42 +54,45 @@ fn spawn_relay_half<S>(
 where
     S: Send + 'static,
 {
-    use io::ErrorKind as K;
-    use mpsc::TryRecvError;
-
-    spawn_thread(name, {
-        let name = name.to_owned();
-        || {
-            debug!("spawned: {}", name);
-            let _guard = DisconnectGuard::new(id, tx);
-            loop {
-                match io::copy(&mut src, &mut dst) {
-                    Ok(size) => {
-                        trace!("{}: {}", name, size);
-                        if size == 0 {
-                            return;
-                        }
-                    }
-                    Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {}
-                    Err(err) => {
-                        error!("{}: {:?}", name, err);
-                        return;
-                    }
-                }
-                let rx = rx.lock().expect("another side relay may be poisoned");
-                match rx.try_recv() {
-                    Ok(()) => {
-                        info!("{}: recv termination message", name);
-                        return;
-                    }
-                    Err(TryRecvError::Empty) => trace!("{}: message empty", name),
-                    Err(TryRecvError::Disconnected) => panic!("the main thread must hold Sender"),
+    spawn_thread(name, move || {
+        debug!("spawned relay");
+        let _guard = DisconnectGuard::new(id, tx);
+        loop {
+            use io::ErrorKind as K;
+            if check_termination(&rx).expect("main thread must be alive") {
+                return;
+            }
+            match io::copy(&mut src, &mut dst) {
+                Ok(0) => return,
+                Ok(size) => trace!("copy: {}", size),
+                Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {}
+                Err(err) => {
+                    error!("{}: {:?}", name, err);
+                    return;
                 }
             }
         }
     })
 }
 
+fn check_termination(rx: &Arc<Mutex<mpsc::Receiver<()>>>) -> Result<bool, Error> {
+    use mpsc::TryRecvError;
+    match rx.lock()?.try_recv() {
+        Ok(()) => {
+            info!("recv termination message");
+            Ok(true)
+        }
+        Err(TryRecvError::Empty) => {
+            trace!("message empty");
+            Ok(false)
+        }
+        Err(TryRecvError::Disconnected) => {
+            Err(ErrorKind::disconnected(thread::current().name().unwrap_or("<anonymous>")).into())
+        }
+    }
+}
+
+/// spawn `name`d thread performs `f`
 fn spawn_thread<F, R>(name: &str, f: F) -> Result<JoinHandle<R>, Error>
 where
     F: FnOnce() -> R + Send + 'static,
