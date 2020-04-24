@@ -9,7 +9,6 @@ use log::*;
 use crate::auth_service::AuthService;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
-use crate::model;
 use crate::model::dao::*;
 use crate::model::model::*;
 use crate::model::{Error, ErrorKind};
@@ -114,10 +113,7 @@ where
         }
     }
 
-    fn make_session<'a>(
-        &self,
-        mut src_conn: impl ByteStream + 'a,
-    ) -> Result<RelayHandle, model::Error> {
+    fn make_session<'a>(&self, mut src_conn: impl ByteStream + 'a) -> Result<RelayHandle, Error> {
         let mut socks = ReadWriteStream::new(&mut src_conn);
 
         let select = negotiate_auth_method(self.version, &self.authorizer, &mut socks)?;
@@ -173,7 +169,7 @@ fn perform_command(
     connector: impl Deref<Target = impl Connector>,
     rule: &ConnectRule,
     connect_to: Address,
-) -> Result<impl ByteStream, model::Error> {
+) -> Result<impl ByteStream, Error> {
     match cmd {
         Command::Connect => {}
         cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
@@ -189,7 +185,7 @@ fn negotiate_auth_method<'a>(
     version: ProtocolVersion,
     auth: impl Deref<Target = impl AuthService>,
     mut socks: impl DerefMut<Target = impl SocksStream>,
-) -> Result<MethodSelection, model::Error> {
+) -> Result<MethodSelection, Error> {
     let candidates = socks.recv_method_candidates()?;
     trace!("candidates: {:?}", candidates);
 
@@ -207,11 +203,11 @@ fn negotiate_auth_method<'a>(
     }
 }
 
-fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<(), model::Error> {
+fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<(), Error> {
     if rule.check(addr.clone(), proto) {
         Ok(())
     } else {
-        Err(model::ErrorKind::connection_not_allowed(addr, proto).into())
+        Err(ErrorKind::connection_not_allowed(addr, proto).into())
     }
 }
 
@@ -281,7 +277,7 @@ mod test {
         use crate::auth_service::NoAuthService;
         let mcand = MethodCandidates {
             version: 5.into(),
-            method: vec![model::Method::NoAuth],
+            method: vec![Method::NoAuth],
         };
         let req = ConnectRequest {
             version: 5.into(),
@@ -351,7 +347,7 @@ mod test {
                 &mut cursor,
                 MethodCandidates {
                     version,
-                    method: vec![model::Method::NoAuth],
+                    method: vec![Method::NoAuth],
                 },
             )
             .unwrap();
@@ -400,7 +396,7 @@ mod test {
                 &mut cursor,
                 MethodCandidates {
                     version,
-                    method: vec![model::Method::NoAuth],
+                    method: vec![Method::NoAuth],
                 },
             )
             .unwrap();
@@ -472,7 +468,7 @@ mod test {
                 &mut cursor,
                 MethodCandidates {
                     version,
-                    method: vec![model::Method::NoAuth],
+                    method: vec![Method::NoAuth],
                 },
             )
             .unwrap();
@@ -504,7 +500,7 @@ mod test {
                 socks::test::read_method_selection(&mut *src.wr_buff()).unwrap(),
                 MethodSelection {
                     version,
-                    method: model::Method::NoAuth
+                    method: Method::NoAuth
                 }
             );
             assert_eq!(
