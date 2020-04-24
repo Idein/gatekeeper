@@ -18,10 +18,10 @@ use crate::rw_socks_stream::ReadWriteStream;
 use crate::server_command::ServerCommand;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SessionId(pub u64);
+pub struct SessionId(pub u32);
 
-impl From<u64> for SessionId {
-    fn from(id: u64) -> Self {
+impl From<u32> for SessionId {
+    fn from(id: u32) -> Self {
         Self(id)
     }
 }

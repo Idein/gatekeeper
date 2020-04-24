@@ -117,7 +117,7 @@ where
 
     fn next_session_id(&mut self) -> SessionId {
         loop {
-            let next_candidate = self.id_rng.next_u64().into();
+            let next_candidate = self.id_rng.next_u32().into();
             if self.session.contains_key(&next_candidate) {
                 continue;
             }
