@@ -5,7 +5,7 @@ use std::thread::{self, JoinHandle};
 use log::*;
 
 use crate::byte_stream::{BoxedStream, ByteStream};
-use crate::model;
+use crate::model::Error;
 use crate::server_command::ServerCommand;
 use crate::session::{DisconnectGuard, SessionId};
 
@@ -15,7 +15,7 @@ pub fn spawn_relay<S>(
     server_conn: impl ByteStream,
     rx: mpsc::Receiver<()>,
     tx: mpsc::SyncSender<ServerCommand<S>>,
-) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error>
+) -> Result<(JoinHandle<()>, JoinHandle<()>), Error>
 where
     S: Send + 'static,
 {
@@ -45,22 +45,21 @@ where
 
 fn spawn_relay_half<S>(
     id: SessionId,
-    name: &str,
+    name: &'static str,
     rx: Arc<Mutex<mpsc::Receiver<()>>>,
     tx: mpsc::SyncSender<ServerCommand<S>>,
     mut src: impl io::Read + Send + 'static,
     mut dst: impl io::Write + Send + 'static,
-) -> Result<JoinHandle<()>, model::Error>
+) -> Result<JoinHandle<()>, Error>
 where
     S: Send + 'static,
 {
     use io::ErrorKind as K;
     use mpsc::TryRecvError;
 
-    let name = name.to_owned();
-    thread::Builder::new()
-        .name(name.clone())
-        .spawn(move || {
+    spawn_thread(name, {
+        let name = name.to_owned();
+        || {
             debug!("spawned: {}", name);
             let _guard = DisconnectGuard::new(id, tx);
             loop {
@@ -87,6 +86,17 @@ where
                     Err(TryRecvError::Disconnected) => panic!("the main thread must hold Sender"),
                 }
             }
-        })
+        }
+    })
+}
+
+fn spawn_thread<F, R>(name: &str, f: F) -> Result<JoinHandle<R>, Error>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    thread::Builder::new()
+        .name(name.into())
+        .spawn(move || f())
         .map_err(Into::into)
 }
