@@ -167,8 +167,14 @@ where
                     if let Some(session) = self.session.remove(&id) {
                         debug!("stopping session: {}", id);
                         session.stop().ok();
-                        session.join().ok();
-                        debug!("session is stopped: {}", id);
+                        match session.join() {
+                            Ok(Ok(())) => info!("session is stopped: {}", id),
+                            Ok(Err(err)) => {
+                                error!("session error: {}: {}", id, err);
+                                trace!("session error: {}: {}", id, err);
+                            }
+                            Err(err) => error!("session panic: {}: {:?}", id, err),
+                        }
                     } else {
                         error!("session not found: {}", id);
                     }
