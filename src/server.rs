@@ -169,14 +169,13 @@ where
                         session.stop().ok();
                         match session.join() {
                             Ok(Ok(())) => info!("session is stopped: {}", id),
-                            Ok(Err(err)) => {
-                                error!("session error: {}: {}", id, err);
-                                trace!("session error: {}: {}", id, err);
-                            }
+                            Ok(Err(err)) => error!("session error: {}: {}", id, err),
                             Err(err) => error!("session panic: {}: {:?}", id, err),
                         }
                     } else {
-                        error!("session not found: {}", id);
+                        // disconnection requests are sent from
+                        // both incoming and outgoin relay threads.
+                        trace!("session already be stopped: {}", id);
                     }
                 }
             }
