@@ -15,39 +15,9 @@ use crate::byte_stream::ByteStream;
 use crate::config::ServerConfig;
 use crate::connector::{Connector, TcpUdpConnector};
 use crate::error::Error;
-use crate::model;
 use crate::model::{ProtocolVersion, SocketAddr};
-use crate::relay::RelayHandle;
 use crate::server_command::ServerCommand;
-use crate::session::{Session, SessionId};
-
-#[derive(Debug)]
-pub struct SessionHandle {
-    handle: thread::JoinHandle<Result<RelayHandle, model::Error>>,
-    tx: SyncSender<()>,
-}
-
-impl SessionHandle {
-    fn new(
-        handle: thread::JoinHandle<Result<RelayHandle, model::Error>>,
-        tx: SyncSender<()>,
-    ) -> Self {
-        Self { handle, tx }
-    }
-
-    fn stop(&self) -> Result<(), model::Error> {
-        self.tx
-            .send(())
-            .map_err(|_| model::ErrorKind::disconnected("session").into())
-    }
-
-    fn join(self) -> thread::Result<Result<(), model::Error>> {
-        match self.handle.join()? {
-            Ok(relay) => relay.join(),
-            Err(err) => Ok(Err(err)),
-        }
-    }
-}
+use crate::session::{Session, SessionHandle, SessionId};
 
 pub struct Server<S, T, C> {
     config: ServerConfig,
@@ -217,6 +187,7 @@ mod test {
     use crate::byte_stream::test::*;
     use crate::config::*;
     use crate::connector::*;
+    use crate::model;
 
     use std::borrow::Cow;
     use std::ops::Deref;

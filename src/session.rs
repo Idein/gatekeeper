@@ -1,6 +1,8 @@
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::mpsc;
+use std::sync::mpsc::SyncSender;
+use std::thread;
 
 use log::*;
 
@@ -27,6 +29,31 @@ impl From<u64> for SessionId {
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "SessionId({})", self.0)
+    }
+}
+
+#[derive(Debug)]
+pub struct SessionHandle {
+    handle: thread::JoinHandle<Result<RelayHandle, Error>>,
+    tx: SyncSender<()>,
+}
+
+impl SessionHandle {
+    pub fn new(handle: thread::JoinHandle<Result<RelayHandle, Error>>, tx: SyncSender<()>) -> Self {
+        Self { handle, tx }
+    }
+
+    pub fn stop(&self) -> Result<(), Error> {
+        self.tx
+            .send(())
+            .map_err(|_| ErrorKind::disconnected("session").into())
+    }
+
+    pub fn join(self) -> thread::Result<Result<(), Error>> {
+        match self.handle.join()? {
+            Ok(relay) => relay.join(),
+            Err(err) => Ok(Err(err)),
+        }
     }
 }
 

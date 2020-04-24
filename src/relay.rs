@@ -11,7 +11,9 @@ use crate::session::{DisconnectGuard, SessionId};
 
 #[derive(Debug)]
 pub struct RelayHandle {
+    /// handle to relay: client -> external network
     outbound_th: JoinHandle<Result<(), Error>>,
+    /// handle to relay: client <- external network
     incoming_th: JoinHandle<Result<(), Error>>,
 }
 
