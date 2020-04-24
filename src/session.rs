@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use std::sync::mpsc;
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::{self, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use log::*;
@@ -43,10 +43,13 @@ impl SessionHandle {
         Self { handle, tx }
     }
 
-    pub fn stop(&self) -> Result<(), Error> {
-        self.tx
-            .send(())
-            .map_err(|_| ErrorKind::disconnected("session").into())
+    pub fn stop(&self) {
+        // ignore disconnected error. if the receiver is deallocated,
+        // relay threads should have been terminated.
+        if self.tx.send(()).is_ok() {
+            // send message to in- and out- relays
+            self.tx.send(()).ok();
+        }
     }
 
     pub fn join(self) -> thread::Result<Result<(), Error>> {
@@ -66,9 +69,9 @@ pub struct Session<D, A, S> {
     pub server_addr: SocketAddr,
     pub conn_rule: ConnectRule,
     /// notify termination to the main thread
-    tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
+    tx_cmd: mpsc::Sender<ServerCommand<S>>,
     /// termination message receiver
-    rx: mpsc::Receiver<()>,
+    rx: Arc<Mutex<mpsc::Receiver<()>>>,
 }
 
 impl<D, A, S> Session<D, A, S>
@@ -77,6 +80,7 @@ where
     A: AuthService,
     S: Send + 'static,
 {
+    /// Returns Self and termination message sender.
     pub fn new(
         id: SessionId,
         version: ProtocolVersion,
@@ -84,9 +88,9 @@ where
         authorizer: A,
         server_addr: SocketAddr,
         conn_rule: ConnectRule,
-        tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
+        tx_cmd: mpsc::Sender<ServerCommand<S>>,
     ) -> (Self, mpsc::SyncSender<()>) {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = mpsc::sync_channel(2);
         (
             Self {
                 id,
@@ -96,7 +100,7 @@ where
                 server_addr,
                 conn_rule,
                 tx_cmd,
-                rx,
+                rx: Arc::new(Mutex::new(rx)),
             },
             tx,
         )
@@ -111,7 +115,7 @@ where
     }
 
     fn make_session<'a>(
-        self,
+        &self,
         mut src_conn: impl ByteStream + 'a,
     ) -> Result<RelayHandle, model::Error> {
         let mut socks = ReadWriteStream::new(&mut src_conn);
@@ -143,7 +147,13 @@ where
             }
         };
 
-        relay::spawn_relay(self.id, socks.into_inner(), conn, self.rx, self.tx_cmd)
+        relay::spawn_relay(
+            self.id,
+            socks.into_inner(),
+            conn,
+            self.rx.clone(),
+            self.tx_cmd.clone(),
+        )
     }
 
     pub fn start<'a>(
@@ -151,8 +161,10 @@ where
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
     ) -> Result<RelayHandle, Error> {
-        let _guard = DisconnectGuard::new(self.id, self.tx_cmd.clone());
-        Ok(self.make_session(src_conn)?)
+        self.make_session(src_conn).map_err(|err| {
+            DisconnectGuard::new(self.id, self.tx_cmd.clone());
+            err
+        })
     }
 }
 
@@ -206,17 +218,18 @@ fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<()
 #[derive(Debug, Clone)]
 pub struct DisconnectGuard<S> {
     id: SessionId,
-    tx: mpsc::SyncSender<ServerCommand<S>>,
+    tx: mpsc::Sender<ServerCommand<S>>,
 }
 
 impl<S> DisconnectGuard<S> {
-    pub fn new(id: SessionId, tx: mpsc::SyncSender<ServerCommand<S>>) -> Self {
+    pub fn new(id: SessionId, tx: mpsc::Sender<ServerCommand<S>>) -> Self {
         Self { id, tx }
     }
 }
 
 impl<S> Drop for DisconnectGuard<S> {
     fn drop(&mut self) {
+        debug!("DisconnectGuard: {}", self.id);
         self.tx.send(ServerCommand::Disconnect(self.id)).ok();
     }
 }
@@ -238,7 +251,7 @@ mod test {
             command: Command::Connect,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
-        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
             0.into(),
             5.into(),
@@ -276,7 +289,7 @@ mod test {
             command: Command::UdpAssociate,
             connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
         };
-        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
             1.into(),
             5.into(),
@@ -313,7 +326,7 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
-        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
             2.into(),
             version,
@@ -365,7 +378,7 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
-        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(1);
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
             3.into(),
             version,
@@ -426,10 +439,11 @@ mod test {
     fn relay_contents() {
         use crate::auth_service::NoAuthService;
         use io::Write;
+
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::Domain("example.com".into(), 5123);
-        let (tx, _rx) = mpsc::sync_channel::<ServerCommand<()>>(2);
-        let (session, tx) = Session::new(
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
+        let (session, _tx_session_term) = Session::new(
             4.into(),
             version,
             BufferConnector {
@@ -480,7 +494,6 @@ mod test {
         let dst_connector = session.dst_connector.clone();
         // start relay
         let relay = session.make_session(src.clone()).unwrap();
-        tx.send(()).unwrap();
         assert!(relay.join().is_ok());
 
         // check for replied command from Session to client

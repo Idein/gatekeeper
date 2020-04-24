@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::{
-    mpsc::{self, Receiver, SyncSender},
+    mpsc::{self, Receiver, Sender, SyncSender},
     Arc, Mutex,
 };
 use std::thread;
@@ -21,7 +21,7 @@ use crate::session::{Session, SessionHandle, SessionId};
 
 pub struct Server<S, T, C> {
     config: ServerConfig,
-    tx_cmd: SyncSender<ServerCommand<S>>,
+    tx_cmd: Sender<ServerCommand<S>>,
     rx_cmd: Receiver<ServerCommand<S>>,
     /// bind server address
     binder: T,
@@ -38,7 +38,7 @@ pub struct Server<S, T, C> {
 /// spawn a thread send accepted stream to `tx`
 fn spawn_acceptor<S>(
     acceptor: impl Iterator<Item = (S, SocketAddr)> + Send + 'static,
-    tx: SyncSender<ServerCommand<S>>,
+    tx: Sender<ServerCommand<S>>,
 ) -> thread::JoinHandle<()>
 where
     S: ByteStream + 'static,
@@ -71,7 +71,7 @@ where
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
-    pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
+    pub fn new(config: ServerConfig) -> (Self, mpsc::Sender<ServerCommand<TcpStream>>) {
         let (tx_done, rx_done) = mpsc::sync_channel(1);
         Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
             config.clone(),
@@ -97,8 +97,8 @@ where
         binder: T,
         tx_acceptor_done: SyncSender<()>,
         connector: C,
-    ) -> (Self, SyncSender<ServerCommand<S>>) {
-        let (tx, rx) = mpsc::sync_channel(0);
+    ) -> (Self, Sender<ServerCommand<S>>) {
+        let (tx, rx) = mpsc::channel();
         (
             Self {
                 config,
@@ -138,9 +138,7 @@ where
                     trace!("stopping accept thread...");
                     self.tx_acceptor_done.send(()).ok();
                     trace!("stopping session threads...");
-                    self.session.iter().for_each(|(_, ss)| {
-                        ss.stop().ok();
-                    });
+                    self.session.iter().for_each(|(_, ss)| ss.stop());
 
                     self.session.drain().for_each(|(_, ss)| {
                         ss.join().ok();
@@ -166,7 +164,7 @@ where
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
                         debug!("stopping session: {}", id);
-                        session.stop().ok();
+                        session.stop();
                         match session.join() {
                             Ok(Ok(())) => info!("session is stopped: {}", id),
                             Ok(Err(err)) => error!("session error: {}: {}", id, err),
@@ -214,19 +212,21 @@ mod test {
             tx_done,
             TcpUdpConnector::new(None),
         );
-        let shutdown = Arc::new(Mutex::new(SystemTime::now()));
+        let req_shutdown = Arc::new(Mutex::new(SystemTime::now()));
+
         let th = {
-            let shutdown = shutdown.clone();
+            let req_shutdown = req_shutdown.clone();
             thread::spawn(move || {
-                server.serve().ok();
-                *shutdown.lock().unwrap() = SystemTime::now();
+                thread::sleep(Duration::from_secs(1));
+                *req_shutdown.lock().unwrap() = SystemTime::now();
+                tx.send(ServerCommand::Terminate).unwrap();
             })
         };
-        thread::sleep(Duration::from_secs(1));
-        let req_shutdown = SystemTime::now();
-        tx.send(ServerCommand::Terminate).unwrap();
+
+        server.serve().ok();
+        let shutdown = SystemTime::now();
         th.join().unwrap();
-        assert!(shutdown.lock().unwrap().deref() > &req_shutdown);
+        assert!(&shutdown > req_shutdown.lock().unwrap().deref());
     }
 
     struct DummyBinder {
@@ -252,19 +252,29 @@ mod test {
             ),
             src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
-        let (tx_done, _rx_done) = mpsc::sync_channel(1);
-        let (mut server, tx) = Server::with_binder(
-            ServerConfig::default(),
-            binder,
-            tx_done,
-            TcpUdpConnector::new(None),
-        );
-        let th = thread::spawn(move || {
-            server.serve().ok();
-        });
+        let tx = Arc::new(Mutex::new(None));
+        let th = {
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let (tx_done, _rx_done) = mpsc::sync_channel(1);
+                let (mut server, stx) = Server::with_binder(
+                    ServerConfig::default(),
+                    binder,
+                    tx_done,
+                    TcpUdpConnector::new(None),
+                );
+                *tx.lock().unwrap() = Some(stx);
+                server.serve().ok();
+            })
+        };
 
         thread::sleep(Duration::from_secs(1));
-        tx.send(ServerCommand::Terminate).unwrap();
+        tx.lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .send(ServerCommand::Terminate)
+            .unwrap();
         th.join().unwrap();
     }
 }
