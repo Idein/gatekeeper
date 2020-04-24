@@ -6,8 +6,7 @@ use log::*;
 
 use crate::byte_stream::{BoxedStream, ByteStream};
 use crate::model::{Error, ErrorKind};
-use crate::server_command::ServerCommand;
-use crate::session::{DisconnectGuard, SessionId};
+use crate::session::DisconnectGuard;
 
 #[derive(Debug)]
 pub struct RelayHandle {
@@ -35,8 +34,6 @@ impl RelayHandle {
 
 /// Spawn relay thread(s)
 ///
-/// * `id`
-///    The id of session spawns this relay
 /// * `client_conn`
 ///    Connection between client and this proxy.
 /// * `server_conn`
@@ -44,14 +41,13 @@ impl RelayHandle {
 /// * `rx`
 ///    Relay termination message Receiver.
 ///    It is needed to send 2 messages for terminates 2 relays.
-/// * `tx`
-///    Notify relay thread termination with send `Disconnect` to main thread.
+/// * `guard`
+///    Send `Disconnect` to the main thread when the relay thread is completed.
 pub fn spawn_relay<S>(
-    id: SessionId,
     client_conn: BoxedStream,
     server_conn: impl ByteStream,
     rx: Arc<Mutex<mpsc::Receiver<()>>>,
-    tx: mpsc::Sender<ServerCommand<S>>,
+    guard: Arc<Mutex<DisconnectGuard<S>>>,
 ) -> Result<RelayHandle, Error>
 where
     S: Send + 'static,
@@ -60,16 +56,16 @@ where
     let (read_server, write_server) = server_conn.split()?;
 
     let outbound_th = {
-        let tx = tx.clone();
+        let guard = guard.clone();
         let rx = rx.clone();
         spawn_thread("outbound", move || {
-            let _guard = DisconnectGuard::new(id, tx);
+            let _guard = guard;
             spawn_relay_half(rx, read_client, write_server)
         })?
     };
     let incoming_th = {
         spawn_thread("incoming", move || {
-            let _guard = DisconnectGuard::new(id, tx);
+            let _guard = guard;
             spawn_relay_half(rx, read_server, write_client)
         })?
     };

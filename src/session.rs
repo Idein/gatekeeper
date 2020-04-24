@@ -67,10 +67,11 @@ pub struct Session<D, A, S> {
     pub authorizer: A,
     pub server_addr: SocketAddr,
     pub conn_rule: ConnectRule,
-    /// notify termination to the main thread
-    tx_cmd: mpsc::Sender<ServerCommand<S>>,
     /// termination message receiver
     rx: Arc<Mutex<mpsc::Receiver<()>>>,
+    /// Send `Disconnect` command to the main thread.
+    /// This guard is shared with 2 relays.
+    guard: Arc<Mutex<DisconnectGuard<S>>>,
 }
 
 impl<D, A, S> Session<D, A, S>
@@ -98,8 +99,8 @@ where
                 authorizer,
                 server_addr,
                 conn_rule,
-                tx_cmd,
                 rx: Arc::new(Mutex::new(rx)),
+                guard: Arc::new(Mutex::new(DisconnectGuard::new(id, tx_cmd))),
             },
             tx,
         )
@@ -144,11 +145,10 @@ where
         };
 
         relay::spawn_relay(
-            self.id,
             socks.into_inner(),
             conn,
             self.rx.clone(),
-            self.tx_cmd.clone(),
+            self.guard.clone(),
         )
     }
 
@@ -157,10 +157,7 @@ where
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
     ) -> Result<RelayHandle, Error> {
-        self.make_session(src_conn).map_err(|err| {
-            DisconnectGuard::new(self.id, self.tx_cmd.clone());
-            err
-        })
+        self.make_session(src_conn)
     }
 }
 
@@ -226,7 +223,7 @@ impl<S> DisconnectGuard<S> {
 impl<S> Drop for DisconnectGuard<S> {
     fn drop(&mut self) {
         debug!("DisconnectGuard: {}", self.id);
-        self.tx.send(ServerCommand::Disconnect(self.id)).ok();
+        self.tx.send(ServerCommand::Disconnect(self.id)).unwrap()
     }
 }
 

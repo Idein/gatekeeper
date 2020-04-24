@@ -171,9 +171,7 @@ where
                             Err(err) => error!("session panic: {}: {:?}", id, err),
                         }
                     } else {
-                        // disconnection requests are sent from
-                        // both incoming and outgoin relay threads.
-                        trace!("session already be stopped: {}", id);
+                        error!("session already be stopped: {}", id);
                     }
                 }
             }
