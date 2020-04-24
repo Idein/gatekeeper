@@ -38,51 +38,52 @@ impl TcpAcceptor {
         }
     }
 
-    fn check_done(&self) -> Result<bool, Error> {
-        use mpsc::TryRecvError;
-        match self.rx.lock()?.try_recv() {
-            Ok(()) => Ok(true),
-            Err(TryRecvError::Empty) => Ok(false),
-            Err(TryRecvError::Disconnected) => Err(ErrorKind::disconnected("acceptor").into()),
-        }
+    fn accept_timeout(&self) -> io::Result<(TcpStream, SocketAddr)> {
+        self.listener
+            .accept_timeout(self.accept_timeout.clone())
+            .and_then(|(tcp, addr)| {
+                tcp.set_read_timeout(self.rw_timeout.clone())?;
+                tcp.set_write_timeout(self.rw_timeout.clone())?;
+                Ok((tcp, addr))
+            })
     }
+}
+
+fn check_message(rx: &Arc<Mutex<Receiver<()>>>) -> Result<bool, Error> {
+    use mpsc::TryRecvError;
+    match rx.lock()?.try_recv() {
+        Ok(()) => Ok(true),
+        Err(TryRecvError::Empty) => Ok(false),
+        Err(TryRecvError::Disconnected) => Err(ErrorKind::disconnected("acceptor").into()),
+    }
+}
+
+macro_rules! check_done {
+    ($rx:expr) => {
+        match check_message($rx) {
+            Ok(true) => return None,
+            Ok(false) => {}
+            Err(_) => return None,
+        }
+    };
 }
 
 impl Iterator for TcpAcceptor {
     type Item = (TcpStream, SocketAddr);
     fn next(&mut self) -> Option<Self::Item> {
-        match self.check_done() {
-            Ok(true) => return None,
-            Ok(false) => {}
-            Err(_) => return None,
-        }
         loop {
-            return match self.listener.accept_timeout(self.accept_timeout.clone()) {
-                Ok((tcp, addr)) => {
-                    if let Err(err) = tcp.set_read_timeout(self.rw_timeout.clone()) {
-                        error!("set_read_timeout({:?}): {:?}", self.rw_timeout, err);
-                        return None;
-                    }
-                    if let Err(err) = tcp.set_write_timeout(self.rw_timeout.clone()) {
-                        error!("set_write_timeout({:?}): {:?}", self.rw_timeout, err);
-                        return None;
-                    }
-                    Some((tcp, addr))
-                }
+            check_done!(&self.rx);
+            match self.accept_timeout() {
+                Ok(x) => return Some(x),
                 Err(err) if err.kind() == io::ErrorKind::TimedOut => {
-                    // trace!("accept timeout");
-                    match self.check_done() {
-                        Ok(true) => None,
-                        Ok(false) => continue,
-                        Err(_) => None,
-                    }
+                    // trace!("accept timeout: {}", err);
                 }
                 Err(err) => {
                     error!("accept error: {}", err);
                     trace!("accept error: {:?}", err);
-                    None
+                    return None;
                 }
-            };
+            }
         }
     }
 }
