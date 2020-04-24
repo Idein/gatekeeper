@@ -81,10 +81,8 @@ fn spawn_relay_half(
     mut src: impl io::Read + Send + 'static,
     mut dst: impl io::Write + Send + 'static,
 ) -> Result<(), Error> {
-    info!(
-        "spawned relay: {}",
-        thread::current().name().unwrap_or("<anonymous>")
-    );
+    let thread_name = thread::current().name().unwrap_or("<anonymous>").to_owned();
+    info!("spawned relay: {}", thread_name);
     loop {
         use io::ErrorKind as K;
         if check_termination(&rx).expect("main thread must be alive") {
@@ -96,12 +94,9 @@ fn spawn_relay_half(
                 info!("relay thread has been finished.");
                 return Ok(());
             }
-            Ok(size) => trace!("copy: {}bytes", size),
+            Ok(size) => trace!("{} copy: {} bytes", thread_name, size),
             Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {}
-            Err(err) => {
-                error!("relay error: {:?}", err);
-                Err(err)?;
-            }
+            Err(err) => Err(err)?,
         }
     }
 }
