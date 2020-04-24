@@ -50,6 +50,7 @@ impl<D, A, S> Session<D, A, S>
 where
     D: Connector,
     A: AuthService,
+    S: Send + 'static,
 {
     pub fn new(
         id: SessionId,
@@ -117,7 +118,7 @@ where
             }
         };
 
-        relay::spawn_relay(socks.into_inner(), conn, self.rx)
+        relay::spawn_relay(self.id, socks.into_inner(), conn, self.rx, self.tx_cmd)
     }
 
     pub fn start<'a>(
@@ -125,12 +126,8 @@ where
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
     ) -> Result<(JoinHandle<()>, JoinHandle<()>), Error> {
-        let id = self.id;
-        let tx_cmd = self.tx_cmd.clone();
-        let res = self.make_session(src_conn).map_err(Into::into);
-        // main thread must be alive
-        tx_cmd.send(ServerCommand::Disconnect(id)).unwrap();
-        res
+        let _guard = DisconnectGuard::new(self.id, self.tx_cmd.clone());
+        Ok(self.make_session(src_conn)?)
     }
 }
 
@@ -178,6 +175,24 @@ fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<()
         Ok(())
     } else {
         Err(model::ErrorKind::connection_not_allowed(addr, proto).into())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DisconnectGuard<S> {
+    id: SessionId,
+    tx: mpsc::SyncSender<ServerCommand<S>>,
+}
+
+impl<S> DisconnectGuard<S> {
+    pub fn new(id: SessionId, tx: mpsc::SyncSender<ServerCommand<S>>) -> Self {
+        Self { id, tx }
+    }
+}
+
+impl<S> Drop for DisconnectGuard<S> {
+    fn drop(&mut self) {
+        self.tx.send(ServerCommand::Disconnect(self.id)).ok();
     }
 }
 
