@@ -1,3 +1,68 @@
+//! Proxy server main process
+//!
+//! # Server workflow summary
+//!
+//! ```text
+//! Client     Acceptor        Server                      External Service
+//!   |            |             |                                 |
+//!   |            |             |                                 |
+//!   |----------->|             |                                 |
+//!   |connect(2)  x accept(2)   |                                 |
+//!   |            |------------>|                                 |
+//!   |            |Connect      |                                 |
+//!   |            |             |                                 |
+//!   |            |             x Session::new                    |
+//!   .            .             .                                 |
+//!   .            .             .                                 |
+//!   |                          |                                 |
+//!   | [ establish connection ] |                                 |
+//!   |     - authorize          |                                 |
+//!   |     - filtering          |                                 |
+//!   .                          .                                 |
+//!   .                          .                                 |
+//!   |                          |        incoming    outgoing     |
+//!   |                          |          relay      relay       |
+//!   |                          x -----------x--------> x         |
+//!   |                          |spawn_relay |          |         |
+//!   |                          .            |          |         |
+//!   |                          .            |          |         |
+//!   |                                       |          |         |
+//!
+//! [ repeat ]                                |          |         |
+//!   |------------------------------------------------->|         |
+//!   |write(2)                               |          |-------->|
+//!   |                                       |          |write(2) |
+//!   |                                       |          |         |
+//!   |                                       |          |<--------|
+//!   |<-------------------------------------------------|read(2)  |
+//!   |read(2)                                |          |         |
+//!   |                                       |          |         |
+//!
+//! [ alt ]
+//! [ relay completed ]                       |          |
+//!   |                          .            |          |
+//!   |                          .            .          |
+//!   |                          |            .          |
+//!   |                          |            x complete .
+//!   |                          |                       .
+//!   |                          |<----------------------x complete
+//!   |                          |             Disconnect
+//!   |                          |
+//!
+//! [ alt ]
+//! [ abort relay ]              |            |          |
+//!   |                          x recv Terminate        |
+//!   |                          |            |          |
+//!   |                          |----------->|          |
+//!   |                          |send(())    x          |
+//!   |                          |                       |
+//!   |                          |---------------------->|
+//!   |                          |send(())               |
+//!   |                          |                       |
+//!   |                          |<----------------------x
+//!   |                          |             Disconnect
+//!   |                          |
+//! ```
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::{
@@ -126,6 +191,7 @@ where
         }
     }
 
+    /// Server main loop
     pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
         let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone());
