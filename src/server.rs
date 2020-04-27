@@ -1,5 +1,8 @@
 use std::net::TcpStream;
-use std::sync::mpsc::{self, SyncSender};
+use std::sync::{
+    mpsc::{self, Receiver, SyncSender},
+    Arc, Mutex,
+};
 use std::thread;
 
 use log::*;
@@ -49,10 +52,12 @@ impl SessionHandle {
 
 pub struct Server<S, T, C> {
     config: ServerConfig,
-    tx_cmd: mpsc::SyncSender<ServerCommand<S>>,
-    rx_cmd: mpsc::Receiver<ServerCommand<S>>,
+    tx_cmd: SyncSender<ServerCommand<S>>,
+    rx_cmd: Receiver<ServerCommand<S>>,
     /// bind server address
     binder: T,
+    /// send termination message to the acceptor
+    tx_acceptor_done: SyncSender<()>,
     /// make connection to service host
     connector: C,
     protocol_version: ProtocolVersion,
@@ -110,9 +115,15 @@ where
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
     pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
+        let (tx_done, rx_done) = mpsc::sync_channel(1);
         Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
             config.clone(),
-            TcpBinder::new(config.client_rw_timeout),
+            TcpBinder::new(
+                config.client_rw_timeout,
+                Arc::new(Mutex::new(rx_done)),
+                config.accept_timeout,
+            ),
+            tx_done,
             TcpUdpConnector::new(config.server_rw_timeout),
         )
     }
@@ -127,8 +138,9 @@ where
     pub fn with_binder(
         config: ServerConfig,
         binder: T,
+        tx_acceptor_done: SyncSender<()>,
         connector: C,
-    ) -> (Self, mpsc::SyncSender<ServerCommand<S>>) {
+    ) -> (Self, SyncSender<ServerCommand<S>>) {
         let (tx, rx) = mpsc::sync_channel(0);
         (
             Self {
@@ -136,6 +148,7 @@ where
                 tx_cmd: tx.clone(),
                 rx_cmd: rx,
                 binder,
+                tx_acceptor_done,
                 connector,
                 protocol_version: ProtocolVersion::from(5),
                 session: vec![],
@@ -146,21 +159,27 @@ where
 
     pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
-        spawn_acceptor(acceptor, self.tx_cmd.clone());
+        let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone());
 
         while let Ok(cmd) = self.rx_cmd.recv() {
             use ServerCommand::*;
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
-                    // request to stop
+                    info!("terminating sessions...");
+                    trace!("stopping accept thread...");
+                    self.tx_acceptor_done.send(()).ok();
+                    trace!("stopping session threads...");
                     self.session.iter().for_each(|ss| {
                         ss.stop().ok();
                     });
-                    // waiting for a stop
+
                     self.session.drain(..).for_each(|ss| {
                         ss.join().ok();
                     });
+                    trace!("session threads are stopped");
+                    accept_th.join().ok();
+                    trace!("accept thread is stopped");
                     break;
                 }
                 Connect(stream, addr) => {
@@ -197,9 +216,18 @@ mod test {
     #[test]
     fn server_shutdown() {
         let config = ServerConfig::default();
+        let (tx_done, rx_done) = mpsc::sync_channel(1);
 
-        let (mut server, tx) =
-            Server::with_binder(config, TcpBinder::new(None), TcpUdpConnector::new(None));
+        let (mut server, tx) = Server::with_binder(
+            config,
+            TcpBinder::new(
+                None,
+                Arc::new(Mutex::new(rx_done)),
+                Some(Duration::from_secs(3)),
+            ),
+            tx_done,
+            TcpUdpConnector::new(None),
+        );
         let shutdown = Arc::new(Mutex::new(SystemTime::now()));
         let th = {
             let shutdown = shutdown.clone();
@@ -223,7 +251,7 @@ mod test {
     impl Binder for DummyBinder {
         type Stream = BufferStream;
         type Iter = std::iter::Once<(Self::Stream, SocketAddr)>;
-        fn bind(&self, addr: SocketAddr) -> Result<Self::Iter, Error> {
+        fn bind(&self, addr: SocketAddr) -> Result<Self::Iter, model::Error> {
             println!("bind: {}", addr);
             Ok(std::iter::once((self.stream.clone(), self.src_addr)))
         }
@@ -238,8 +266,13 @@ mod test {
             ),
             src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
-        let (mut server, tx) =
-            Server::with_binder(ServerConfig::default(), binder, TcpUdpConnector::new(None));
+        let (tx_done, _rx_done) = mpsc::sync_channel(1);
+        let (mut server, tx) = Server::with_binder(
+            ServerConfig::default(),
+            binder,
+            tx_done,
+            TcpUdpConnector::new(None),
+        );
         let th = thread::spawn(move || {
             server.serve().ok();
         });

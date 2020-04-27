@@ -14,6 +14,8 @@ pub enum ErrorKind {
     Io,
     #[fail(display = "poisoned error: {}", _0)]
     Poisoned(String),
+    #[fail(display = "disconnected channel error: {}", name)]
+    Disconnected { name: String },
     #[fail(display = "message format error: {}", message)]
     MessageFormat { message: String },
     #[fail(display = "authentication error: general")]
@@ -43,6 +45,10 @@ pub enum ErrorKind {
 }
 
 impl ErrorKind {
+    pub fn disconnected<S: Into<String>>(name: S) -> Self {
+        ErrorKind::Disconnected { name: name.into() }
+    }
+
     pub fn message_fmt(message: fmt::Arguments) -> Self {
         ErrorKind::MessageFormat {
             message: message.to_string(),
@@ -98,6 +104,7 @@ impl Error {
         match self.kind() {
             K::Io => CErr::ServerFailure,
             K::Poisoned(_) => CErr::ServerFailure,
+            K::Disconnected { .. } => CErr::ServerFailure,
             K::MessageFormat { .. } => CErr::ServerFailure,
             K::Authentication => CErr::ConnectionNotAllowed,
             K::NoAcceptableMethod => CErr::ConnectionNotAllowed,

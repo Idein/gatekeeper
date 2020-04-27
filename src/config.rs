@@ -10,11 +10,18 @@ use serde_yaml;
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
+    /// ip address for listening connections
     pub server_ip: IpAddr,
+    /// port number for listening connections
     pub server_port: u16,
+    /// rule set for filtering connection requests
     pub conn_rule: ConnectRule,
+    /// timeout of relaying data chunk from client to external network
     pub client_rw_timeout: Option<Duration>,
+    /// timeout of relaying data chunk from external network to client
     pub server_rw_timeout: Option<Duration>,
+    /// timeout of accpet connection from client
+    pub accept_timeout: Option<Duration>,
 }
 
 impl ServerConfig {
@@ -47,6 +54,7 @@ impl Default for ServerConfig {
             conn_rule: ConnectRule::any(),
             client_rw_timeout: Some(Duration::from_millis(2000)),
             server_rw_timeout: Some(Duration::from_millis(5000)),
+            accept_timeout: Some(Duration::from_secs(3)),
         }
     }
 }
@@ -65,6 +73,11 @@ impl ServerConfig {
     }
     pub fn set_server_rw_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
         self.server_rw_timeout = dur;
+        self
+    }
+
+    pub fn set_accept_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
+        self.accept_timeout = dur;
         self
     }
 }

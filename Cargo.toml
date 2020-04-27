@@ -31,6 +31,8 @@ serde_regex = "0.4.0"
 serde_yaml = "0.8"
 signal-hook = "0.1.13"
 structopt = "0.2"
+nix = "0.17.0"
+libc = "0.2.60"
 
 [dev-dependencies]
 socks = "0.3.2"

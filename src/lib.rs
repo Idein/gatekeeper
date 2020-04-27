@@ -12,6 +12,7 @@ mod rw_socks_stream;
 pub mod server;
 pub mod server_command;
 mod session;
+mod tcp_listener_ext;
 mod test;
 
 pub use config::*;
