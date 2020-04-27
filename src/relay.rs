@@ -122,3 +122,56 @@ where
         .spawn(move || f())
         .map_err(Into::into)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_relay() {
+        use crate::byte_stream::test::IterBuffer;
+        use crate::server_command::ServerCommand;
+        use crate::session::SessionId;
+
+        let client_writer = Arc::new(Mutex::new(io::Cursor::new(vec![])));
+        let dummy_client_conn = Box::new(IterBuffer {
+            iter: vec![b"hello".to_vec(), b" ".to_vec(), b"client".to_vec()].into_iter(),
+            wr_buff: client_writer.clone(),
+        }) as Box<dyn ByteStream>;
+
+        let server_writer = Arc::new(Mutex::new(io::Cursor::new(vec![])));
+        let dummy_server_conn = IterBuffer {
+            iter: vec![b"hello".to_vec(), b" ".to_vec(), b"server".to_vec()].into_iter(),
+            wr_buff: server_writer.clone(),
+        };
+
+        let (tx_relay, rx_relay) = mpsc::channel();
+        let (tx_server, rx_server) = mpsc::channel();
+        let guard = Arc::new(Mutex::new(DisconnectGuard::<()>::new(0.into(), tx_server)));
+
+        let handle = {
+            let rx_relay = Arc::new(Mutex::new(rx_relay));
+            spawn_relay(dummy_client_conn, dummy_server_conn, rx_relay, guard).unwrap()
+        };
+
+        assert!(
+            if let ServerCommand::Disconnect(SessionId(0)) = rx_server.recv().unwrap() {
+                true
+            } else {
+                false
+            }
+        );
+
+        tx_relay.send(()).unwrap_err();
+        handle.join().unwrap().unwrap();
+
+        assert_eq!(
+            client_writer.lock().unwrap().get_ref().as_slice(),
+            &b"hello server"[..]
+        );
+        assert_eq!(
+            server_writer.lock().unwrap().get_ref().as_slice(),
+            &b"hello client"[..]
+        );
+    }
+}
