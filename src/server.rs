@@ -97,7 +97,7 @@ pub struct Server<S, T, C> {
     protocol_version: ProtocolVersion,
     session: HashMap<SessionId, SessionHandle>,
     /// random context for generating SessionIds
-    id_rng: ThreadRng,
+    id_rng: StdRng,
 }
 
 /// spawn a thread send accepted stream to `tx`
@@ -174,7 +174,7 @@ where
                 connector,
                 protocol_version: ProtocolVersion::from(5),
                 session: HashMap::new(),
-                id_rng: thread_rng(),
+                id_rng: StdRng::from_entropy(),
             },
             tx,
         )
