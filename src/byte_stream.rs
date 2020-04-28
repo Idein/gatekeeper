@@ -42,7 +42,11 @@ pub mod test {
     }
 
     impl BufferStream {
-        pub fn new(rd: Cow<[u8]>, wr: Cow<[u8]>) -> Self {
+        pub fn new() -> Self {
+            BufferStream::with_buffer(vec![].into(), vec![].into())
+        }
+
+        pub fn with_buffer(rd: Cow<[u8]>, wr: Cow<[u8]>) -> Self {
             Self {
                 rd_buff: Arc::new(Mutex::new(io::Cursor::new(rd.into_owned()))),
                 wr_buff: Arc::new(Mutex::new(io::Cursor::new(wr.into_owned()))),

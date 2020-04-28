@@ -310,7 +310,7 @@ mod test {
     #[test]
     fn dummy_binder() {
         let binder = DummyBinder {
-            stream: BufferStream::new(
+            stream: BufferStream::with_buffer(
                 Cow::from(b"dummy read".to_vec()),
                 Cow::from(b"dummy write".to_vec()),
             ),

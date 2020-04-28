@@ -493,7 +493,8 @@ pub mod test {
             1, 0, 0, 0, 0, 0x1f, 0x90, 5, 3, 0, 3, 11, b'e', b'x', b'a', b'm', b'p', b'l', b'e',
             b'.', b'c', b'o', b'm', 0x7, 0xe4,
         ];
-        let mut strm = ReadWriteStream::new(BufferStream::new((&input).into(), vec![].into()));
+        let mut strm =
+            ReadWriteStream::new(BufferStream::with_buffer((&input).into(), vec![].into()));
         assert_eq!(
             strm.recv_method_candidates().unwrap(),
             model::MethodCandidates {

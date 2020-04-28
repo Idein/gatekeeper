@@ -244,12 +244,9 @@ mod test {
             0.into(),
             5.into(),
             BufferConnector::<BufferStream> {
-                strms: vec![(
-                    "192.168.0.1:5123".parse().unwrap(),
-                    Ok(BufferStream::new(vec![].into(), vec![].into())),
-                )]
-                .into_iter()
-                .collect(),
+                strms: vec![("192.168.0.1:5123".parse().unwrap(), Ok(BufferStream::new()))]
+                    .into_iter()
+                    .collect(),
             },
             RejectService,
             "0.0.0.0:1080".parse().unwrap(),
@@ -257,7 +254,7 @@ mod test {
             tx,
         );
         println!("session: {:?}", session);
-        let src = BufferStream::new(vec![5, 1, 0].into(), vec![].into());
+        let src = BufferStream::with_buffer(vec![5, 1, 0].into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::NoAcceptableMethod
@@ -282,12 +279,9 @@ mod test {
             1.into(),
             5.into(),
             BufferConnector::<BufferStream> {
-                strms: vec![(
-                    req.connect_to.clone(),
-                    Ok(BufferStream::new(vec![].into(), vec![].into())),
-                )]
-                .into_iter()
-                .collect(),
+                strms: vec![(req.connect_to.clone(), Ok(BufferStream::new()))]
+                    .into_iter()
+                    .collect(),
             },
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
@@ -302,7 +296,7 @@ mod test {
             socks::test::write_connect_request(&mut cursor, req).unwrap();
             cursor.into_inner()
         };
-        let src = BufferStream::new(buff.into(), vec![].into());
+        let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::command_not_supported(Command::UdpAssociate)
@@ -319,12 +313,9 @@ mod test {
             2.into(),
             version,
             BufferConnector::<BufferStream> {
-                strms: vec![(
-                    connect_to.clone(),
-                    Ok(BufferStream::new(vec![].into(), vec![].into())),
-                )]
-                .into_iter()
-                .collect(),
+                strms: vec![(connect_to.clone(), Ok(BufferStream::new()))]
+                    .into_iter()
+                    .collect(),
             },
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
@@ -354,7 +345,7 @@ mod test {
             .unwrap();
             cursor.into_inner()
         };
-        let src = BufferStream::new(buff.into(), vec![].into());
+        let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::connection_not_allowed(connect_to, L4Protocol::Tcp)
@@ -403,7 +394,7 @@ mod test {
             .unwrap();
             cursor.into_inner()
         };
-        let src = BufferStream::new(buff.into(), vec![].into());
+        let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::connection_refused(connect_to, L4Protocol::Tcp)
@@ -437,7 +428,7 @@ mod test {
             BufferConnector {
                 strms: vec![(
                     connect_to.clone(),
-                    Ok(BufferStream::new(
+                    Ok(BufferStream::with_buffer(
                         gen_random_vec(8200).into(),
                         vec![].into(),
                     )),
@@ -477,7 +468,7 @@ mod test {
             input_stream_pos = cursor.position();
             // binaries from client
             cursor.write_all(&gen_random_vec(8200)).unwrap();
-            BufferStream::new(cursor.into_inner().into(), vec![].into())
+            BufferStream::with_buffer(cursor.into_inner().into(), vec![].into())
         };
         let dst_connector = session.dst_connector.clone();
         // start relay
