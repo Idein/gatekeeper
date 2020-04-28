@@ -264,16 +264,9 @@ mod test {
     #[test]
     fn command_not_supported() {
         use crate::auth_service::NoAuthService;
-        let mcand = MethodCandidates {
-            version: 5.into(),
-            method: vec![Method::NoAuth],
-        };
-        let req = ConnectRequest {
-            version: 5.into(),
-            // udp is not unsupported
-            command: Command::UdpAssociate,
-            connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
-        };
+        let mcand = MethodCandidates::new(&[Method::NoAuth]);
+        // udp is not unsupported
+        let req = ConnectRequest::udp_associate(Address::from_str("192.168.0.1:5123").unwrap());
         let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
             1.into(),
@@ -320,19 +313,12 @@ mod test {
             let mut cursor = io::Cursor::new(vec![]);
             socks::test::write_method_candidates(
                 &mut cursor,
-                MethodCandidates {
-                    version,
-                    method: vec![Method::NoAuth],
-                },
+                MethodCandidates::new(&[Method::NoAuth]),
             )
             .unwrap();
             socks::test::write_connect_request(
                 &mut cursor,
-                ConnectRequest {
-                    version,
-                    command: Command::Connect,
-                    connect_to: connect_to.clone(),
-                },
+                ConnectRequest::connect_to(connect_to.clone()),
             )
             .unwrap();
             cursor.into_inner()
@@ -368,19 +354,12 @@ mod test {
             let mut cursor = io::Cursor::new(vec![]);
             socks::test::write_method_candidates(
                 &mut cursor,
-                MethodCandidates {
-                    version,
-                    method: vec![Method::NoAuth],
-                },
+                MethodCandidates::new(&[Method::NoAuth]),
             )
             .unwrap();
             socks::test::write_connect_request(
                 &mut cursor,
-                ConnectRequest {
-                    version,
-                    command: Command::Connect,
-                    connect_to: connect_to.clone(),
-                },
+                ConnectRequest::connect_to(connect_to.clone()),
             )
             .unwrap();
             cursor.into_inner()
@@ -436,20 +415,12 @@ mod test {
             let mut cursor = io::Cursor::new(vec![]);
             socks::test::write_method_candidates(
                 &mut cursor,
-                MethodCandidates {
-                    version,
-                    method: vec![Method::NoAuth],
-                },
+                MethodCandidates::new(&[Method::NoAuth]),
             )
             .unwrap();
             socks::test::write_connect_request(
                 &mut cursor,
-                ConnectRequest {
-                    version,
-                    // udp is not unsupported
-                    command: Command::Connect,
-                    connect_to: connect_to.clone(),
-                },
+                ConnectRequest::connect_to(connect_to.clone()),
             )
             .unwrap();
             input_stream_pos = cursor.position();

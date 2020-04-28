@@ -37,6 +37,8 @@ use log::*;
 use regex::Regex;
 use serde::*;
 
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion(5);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
 pub struct ProtocolVersion(u8);
 
@@ -61,6 +63,15 @@ pub enum Method {
 pub struct MethodCandidates {
     pub version: ProtocolVersion,
     pub method: Vec<Method>,
+}
+
+impl MethodCandidates {
+    pub fn new(method: &[Method]) -> Self {
+        Self {
+            version: DEFAULT_PROTOCOL_VERSION,
+            method: method.to_vec(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -154,7 +165,7 @@ impl ConnectRequest {
         Address: From<A>,
     {
         Self {
-            version: 5.into(),
+            version: DEFAULT_PROTOCOL_VERSION,
             command: Command::Connect,
             connect_to: addr.into(),
         }
@@ -165,7 +176,7 @@ impl ConnectRequest {
         Address: From<A>,
     {
         Self {
-            version: 5.into(),
+            version: DEFAULT_PROTOCOL_VERSION,
             command: Command::Bind,
             connect_to: addr.into(),
         }
@@ -176,7 +187,7 @@ impl ConnectRequest {
         Address: From<A>,
     {
         Self {
-            version: 5.into(),
+            version: DEFAULT_PROTOCOL_VERSION,
             command: Command::UdpAssociate,
             connect_to: addr.into(),
         }
