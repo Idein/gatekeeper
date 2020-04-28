@@ -1,32 +1,32 @@
-///! SOCKS5 message types exchanged between client and proxy.
-///!
-///! client            proxy            service
-///!   |                 |                 |
-///!   .                 .                 .
-///!   .                 .                 .
-///!   |                 |                 |
-///!   |---------------->|                 |
-///!   |MethodCandidates |                 |
-///!   |                 |                 |
-///!   |<----------------|                 |
-///!   |  MethodSelection|                 |
-///!   |                 |                 |
-///!   |---------------->|                 |
-///!   |ConnectRequest   |                 |
-///!   |                 |                 |
-///!   |<----------------|                 |
-///!   |     ConnectReply|                 |
-///!   |                 |                 |
-///!   |                 |                 |
-///!   .                 .                 .
-///!   .                 .                 .
-///!   | - - - - - - - ->| - - - - - - - ->|
-///!   |            [[ Relay ]]            |
-///!   |<- - - - - - - - |< - - - - - - - -|
-///!   .                 .                 .
-///!   .                 .                 .
-///!   |                 |                 |
-///!
+//! SOCKS5 message types exchanged between client and proxy.
+//!
+//! client            proxy            service
+//!   |                 |                 |
+//!   .                 .                 .
+//!   .                 .                 .
+//!   |                 |                 |
+//!   |---------------->|                 |
+//!   |MethodCandidates |                 |
+//!   |                 |                 |
+//!   |<----------------|                 |
+//!   |  MethodSelection|                 |
+//!   |                 |                 |
+//!   |---------------->|                 |
+//!   |ConnectRequest   |                 |
+//!   |                 |                 |
+//!   |<----------------|                 |
+//!   |     ConnectReply|                 |
+//!   |                 |                 |
+//!   |                 |                 |
+//!   .                 .                 .
+//!   .                 .                 .
+//!   | - - - - - - - ->| - - - - - - - ->|
+//!   |            [[ Relay ]]            |
+//!   |<- - - - - - - - |< - - - - - - - -|
+//!   .                 .                 .
+//!   .                 .                 .
+//!   |                 |                 |
+//!
 use std::fmt;
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
