@@ -235,6 +235,7 @@ mod test {
     use crate::connector::test::BufferConnector;
     use crate::rw_socks_stream as socks;
     use std::io;
+    use std::iter::FromIterator;
     use std::str::FromStr;
 
     #[test]
@@ -243,11 +244,10 @@ mod test {
         let (session, _) = Session::new(
             0.into(),
             5.into(),
-            BufferConnector::<BufferStream> {
-                strms: vec![("192.168.0.1:5123".parse().unwrap(), Ok(BufferStream::new()))]
-                    .into_iter()
-                    .collect(),
-            },
+            BufferConnector::from_iter(vec![(
+                "192.168.0.1:5123".parse().unwrap(),
+                Ok(BufferStream::new()),
+            )]),
             RejectService,
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
@@ -278,11 +278,7 @@ mod test {
         let (session, _) = Session::new(
             1.into(),
             5.into(),
-            BufferConnector::<BufferStream> {
-                strms: vec![(req.connect_to.clone(), Ok(BufferStream::new()))]
-                    .into_iter()
-                    .collect(),
-            },
+            BufferConnector::from_iter(vec![(req.connect_to.clone(), Ok(BufferStream::new()))]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
@@ -312,11 +308,7 @@ mod test {
         let (session, _) = Session::new(
             2.into(),
             version,
-            BufferConnector::<BufferStream> {
-                strms: vec![(connect_to.clone(), Ok(BufferStream::new()))]
-                    .into_iter()
-                    .collect(),
-            },
+            BufferConnector::from_iter(vec![(connect_to.clone(), Ok(BufferStream::new()))]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::none(),
@@ -361,11 +353,10 @@ mod test {
         let (session, _) = Session::new(
             3.into(),
             version,
-            BufferConnector::<BufferStream> {
-                strms: vec![(connect_to.clone(), Err(ConnectError::ConnectionRefused))]
-                    .into_iter()
-                    .collect(),
-            },
+            BufferConnector::<BufferStream>::from_iter(vec![(
+                connect_to.clone(),
+                Err(ConnectError::ConnectionRefused),
+            )]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
@@ -425,17 +416,13 @@ mod test {
         let (session, _tx_session_term) = Session::new(
             4.into(),
             version,
-            BufferConnector {
-                strms: vec![(
-                    connect_to.clone(),
-                    Ok(BufferStream::with_buffer(
-                        gen_random_vec(8200).into(),
-                        vec![].into(),
-                    )),
-                )]
-                .into_iter()
-                .collect(),
-            },
+            BufferConnector::from_iter(vec![(
+                connect_to.clone(),
+                Ok(BufferStream::with_buffer(
+                    gen_random_vec(8200).into(),
+                    vec![].into(),
+                )),
+            )]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),

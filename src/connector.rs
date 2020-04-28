@@ -65,10 +65,22 @@ pub mod test {
     use crate::byte_stream::ByteStream;
     use model::ErrorKind;
     use std::collections::BTreeMap;
+    use std::iter::FromIterator;
 
     #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
     pub struct BufferConnector<S> {
         pub strms: BTreeMap<Address, Result<S, ConnectError>>,
+    }
+
+    impl<S> FromIterator<(Address, Result<S, ConnectError>)> for BufferConnector<S> {
+        fn from_iter<T>(iter: T) -> Self
+        where
+            T: IntoIterator<Item = (Address, Result<S, ConnectError>)>,
+        {
+            Self {
+                strms: iter.into_iter().collect(),
+            }
+        }
     }
 
     impl<S> BufferConnector<S> {
