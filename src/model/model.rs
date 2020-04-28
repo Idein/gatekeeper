@@ -29,7 +29,7 @@
 //!
 use std::fmt;
 use std::net::ToSocketAddrs;
-pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use derive_more::{Display, From, Into};
@@ -108,6 +108,18 @@ impl From<SocketAddr> for Address {
     }
 }
 
+impl From<SocketAddrV4> for Address {
+    fn from(addr: SocketAddrV4) -> Self {
+        Address::IpAddr(addr.ip().clone().into(), addr.port())
+    }
+}
+
+impl From<SocketAddrV6> for Address {
+    fn from(addr: SocketAddrV6) -> Self {
+        Address::IpAddr(addr.ip().clone().into(), addr.port())
+    }
+}
+
 impl FromStr for Address {
     type Err = std::net::AddrParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -134,6 +146,41 @@ pub struct ConnectRequest {
     pub version: ProtocolVersion,
     pub command: Command,
     pub connect_to: Address,
+}
+
+impl ConnectRequest {
+    pub fn connect_to<A>(addr: A) -> Self
+    where
+        Address: From<A>,
+    {
+        Self {
+            version: 5.into(),
+            command: Command::Connect,
+            connect_to: addr.into(),
+        }
+    }
+
+    pub fn bind<A>(addr: A) -> Self
+    where
+        Address: From<A>,
+    {
+        Self {
+            version: 5.into(),
+            command: Command::Bind,
+            connect_to: addr.into(),
+        }
+    }
+
+    pub fn udp_associate<A>(addr: A) -> Self
+    where
+        Address: From<A>,
+    {
+        Self {
+            version: 5.into(),
+            command: Command::UdpAssociate,
+            connect_to: addr.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Display)]
