@@ -239,18 +239,13 @@ mod test {
 
     #[test]
     fn no_acceptable_method() {
-        let req = ConnectRequest {
-            version: 5.into(),
-            command: Command::Connect,
-            connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
-        };
         let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
             0.into(),
             5.into(),
             BufferConnector::<BufferStream> {
                 strms: vec![(
-                    req.connect_to.clone(),
+                    "192.168.0.1:5123".parse().unwrap(),
                     Ok(BufferStream::new(vec![].into(), vec![].into())),
                 )]
                 .into_iter()
