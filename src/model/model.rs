@@ -1,41 +1,43 @@
-///! SOCKS5 message types exchanged between client and proxy.
-///!
-///! client            proxy            service
-///!   |                 |                 |
-///!   .                 .                 .
-///!   .                 .                 .
-///!   |                 |                 |
-///!   |---------------->|                 |
-///!   |MethodCandidates |                 |
-///!   |                 |                 |
-///!   |<----------------|                 |
-///!   |  MethodSelection|                 |
-///!   |                 |                 |
-///!   |---------------->|                 |
-///!   |ConnectRequest   |                 |
-///!   |                 |                 |
-///!   |<----------------|                 |
-///!   |     ConnectReply|                 |
-///!   |                 |                 |
-///!   |                 |                 |
-///!   .                 .                 .
-///!   .                 .                 .
-///!   | - - - - - - - ->| - - - - - - - ->|
-///!   |            [[ Relay ]]            |
-///!   |<- - - - - - - - |< - - - - - - - -|
-///!   .                 .                 .
-///!   .                 .                 .
-///!   |                 |                 |
-///!
+//! SOCKS5 message types exchanged between client and proxy.
+//!
+//! client            proxy            service
+//!   |                 |                 |
+//!   .                 .                 .
+//!   .                 .                 .
+//!   |                 |                 |
+//!   |---------------->|                 |
+//!   |MethodCandidates |                 |
+//!   |                 |                 |
+//!   |<----------------|                 |
+//!   |  MethodSelection|                 |
+//!   |                 |                 |
+//!   |---------------->|                 |
+//!   |ConnectRequest   |                 |
+//!   |                 |                 |
+//!   |<----------------|                 |
+//!   |     ConnectReply|                 |
+//!   |                 |                 |
+//!   |                 |                 |
+//!   .                 .                 .
+//!   .                 .                 .
+//!   | - - - - - - - ->| - - - - - - - ->|
+//!   |            [[ Relay ]]            |
+//!   |<- - - - - - - - |< - - - - - - - -|
+//!   .                 .                 .
+//!   .                 .                 .
+//!   |                 |                 |
+//!
 use std::fmt;
 use std::net::ToSocketAddrs;
-pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 
 use derive_more::{Display, From, Into};
 use log::*;
 use regex::Regex;
 use serde::*;
+
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion(5);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
 pub struct ProtocolVersion(u8);
@@ -61,6 +63,15 @@ pub enum Method {
 pub struct MethodCandidates {
     pub version: ProtocolVersion,
     pub method: Vec<Method>,
+}
+
+impl MethodCandidates {
+    pub fn new(method: &[Method]) -> Self {
+        Self {
+            version: DEFAULT_PROTOCOL_VERSION,
+            method: method.to_vec(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -108,6 +119,18 @@ impl From<SocketAddr> for Address {
     }
 }
 
+impl From<SocketAddrV4> for Address {
+    fn from(addr: SocketAddrV4) -> Self {
+        Address::IpAddr(addr.ip().clone().into(), addr.port())
+    }
+}
+
+impl From<SocketAddrV6> for Address {
+    fn from(addr: SocketAddrV6) -> Self {
+        Address::IpAddr(addr.ip().clone().into(), addr.port())
+    }
+}
+
 impl FromStr for Address {
     type Err = std::net::AddrParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -134,6 +157,41 @@ pub struct ConnectRequest {
     pub version: ProtocolVersion,
     pub command: Command,
     pub connect_to: Address,
+}
+
+impl ConnectRequest {
+    pub fn connect_to<A>(addr: A) -> Self
+    where
+        Address: From<A>,
+    {
+        Self {
+            version: DEFAULT_PROTOCOL_VERSION,
+            command: Command::Connect,
+            connect_to: addr.into(),
+        }
+    }
+
+    pub fn bind<A>(addr: A) -> Self
+    where
+        Address: From<A>,
+    {
+        Self {
+            version: DEFAULT_PROTOCOL_VERSION,
+            command: Command::Bind,
+            connect_to: addr.into(),
+        }
+    }
+
+    pub fn udp_associate<A>(addr: A) -> Self
+    where
+        Address: From<A>,
+    {
+        Self {
+            version: DEFAULT_PROTOCOL_VERSION,
+            command: Command::UdpAssociate,
+            connect_to: addr.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Display)]

@@ -3,11 +3,14 @@
 use std::fmt;
 use std::net::SocketAddr;
 
+use crate::session::SessionId;
+
 pub enum ServerCommand<T> {
     /// terminate
     Terminate,
     /// connected stream and client address
     Connect(T, SocketAddr),
+    Disconnect(SessionId),
 }
 
 impl<T> fmt::Debug for ServerCommand<T> {
@@ -16,6 +19,7 @@ impl<T> fmt::Debug for ServerCommand<T> {
         match self {
             Terminate => write!(f, "Terminate"),
             Connect(_, addr) => write!(f, "Connect(_, {})", addr),
+            Disconnect(id) => write!(f, "Disconnect({})", id),
         }
     }
 }

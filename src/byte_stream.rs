@@ -32,6 +32,7 @@ pub type BoxedStream<'a> = Box<dyn ByteStream + 'a>;
 pub mod test {
     use super::*;
     use std::borrow::Cow;
+    use std::io::{self};
     use std::sync::{Arc, Mutex, MutexGuard};
 
     #[derive(Debug, Clone)]
@@ -41,7 +42,11 @@ pub mod test {
     }
 
     impl BufferStream {
-        pub fn new(rd: Cow<[u8]>, wr: Cow<[u8]>) -> Self {
+        pub fn new() -> Self {
+            BufferStream::with_buffer(vec![].into(), vec![].into())
+        }
+
+        pub fn with_buffer(rd: Cow<[u8]>, wr: Cow<[u8]>) -> Self {
             Self {
                 rd_buff: Arc::new(Mutex::new(io::Cursor::new(rd.into_owned()))),
                 wr_buff: Arc::new(Mutex::new(io::Cursor::new(wr.into_owned()))),
@@ -85,5 +90,83 @@ pub mod test {
             };
             Ok((Box::new(rd), Box::new(wr)))
         }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct IterBuffer<T> {
+        pub iter: T,
+        pub wr_buff: Arc<Mutex<io::Cursor<Vec<u8>>>>,
+    }
+
+    impl<T> IterBuffer<T>
+    where
+        T: Iterator<Item = Vec<u8>>,
+    {
+        pub fn new(iter: T, wr_buff: io::Cursor<Vec<u8>>) -> Self {
+            Self {
+                iter,
+                wr_buff: Arc::new(Mutex::new(wr_buff)),
+            }
+        }
+    }
+
+    impl<T> io::Read for IterBuffer<T>
+    where
+        T: Iterator<Item = Vec<u8>>,
+    {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if let Some(chunk) = self.iter.next() {
+                (&chunk[..]).read(buf)
+            } else {
+                Ok(0)
+            }
+        }
+    }
+
+    impl<T> io::Write for IterBuffer<T>
+    where
+        T: Iterator<Item = Vec<u8>>,
+    {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            log::debug!("IterBuffer::write({})", String::from_utf8_lossy(buf));
+            self.wr_buff.lock().unwrap().write(buf)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.wr_buff.lock().unwrap().flush()
+        }
+    }
+
+    impl<T> ByteStream for IterBuffer<T>
+    where
+        T: fmt::Debug + Iterator<Item = Vec<u8>> + Clone + Send + 'static,
+    {
+        fn split(&self) -> Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>), Error> {
+            let rd = Box::new(self.clone()) as Box<dyn io::Read + Send>;
+            let wr = Box::new(self.clone()) as Box<dyn io::Write + Send>;
+            Ok((rd, wr))
+        }
+    }
+
+    #[test]
+    fn iter_buffer() {
+        use io::{Read, Write};
+
+        let mut iter_buffer = IterBuffer::new(
+            vec![b"hello".to_vec(), b"world".to_vec()].into_iter(),
+            io::Cursor::new(vec![]),
+        );
+        let mut buff: Vec<u8> = std::iter::repeat(0).take(256).collect();
+
+        let size = iter_buffer.read(&mut buff).unwrap();
+        assert_eq!(&b"hello"[..], &buff[..size]);
+        let size = iter_buffer.read(&mut buff).unwrap();
+        assert_eq!(&b"world"[..], &buff[..size]);
+
+        iter_buffer.write(&b"hello"[..]).unwrap();
+        iter_buffer.write(&b" "[..]).unwrap();
+        iter_buffer.write(&b"world"[..]).unwrap();
+        let wr_buff = iter_buffer.wr_buff.lock().unwrap();
+        assert_eq!(wr_buff.get_ref().as_slice(), &b"hello world"[..])
     }
 }

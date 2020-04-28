@@ -1,11 +1,78 @@
+//! Proxy server main process
+//!
+//! # Server workflow summary
+//!
+//! ```text
+//! Client     Acceptor        Server                      External Service
+//!   |            |             |                                 |
+//!   |            |             |                                 |
+//!   |----------->|             |                                 |
+//!   |connect(2)  x accept(2)   |                                 |
+//!   |            |------------>|                                 |
+//!   |            |Connect      |                                 |
+//!   |            |             |                                 |
+//!   |            |             x Session::new                    |
+//!   .            .             .                                 |
+//!   .            .             .                                 |
+//!   |                          |                                 |
+//!   | [ establish connection ] |                                 |
+//!   |     - authorize          |                                 |
+//!   |     - filtering          |                                 |
+//!   .                          .                                 |
+//!   .                          .                                 |
+//!   |                          |        incoming    outgoing     |
+//!   |                          |          relay      relay       |
+//!   |                          x -----------x--------> x         |
+//!   |                          |spawn_relay |          |         |
+//!   |                          .            |          |         |
+//!   |                          .            |          |         |
+//!   |                                       |          |         |
+//!
+//! [ repeat ]                                |          |         |
+//!   |------------------------------------------------->|         |
+//!   |write(2)                               |          |-------->|
+//!   |                                       |          |write(2) |
+//!   |                                       |          |         |
+//!   |                                       |          |<--------|
+//!   |<-------------------------------------------------|read(2)  |
+//!   |read(2)                                |          |         |
+//!   |                                       |          |         |
+//!
+//! [ alt ]
+//! [ relay completed ]                       |          |
+//!   |                          .            |          |
+//!   |                          .            .          |
+//!   |                          |            .          |
+//!   |                          |            x complete .
+//!   |                          |                       .
+//!   |                          |<----------------------x complete
+//!   |                          |             Disconnect
+//!   |                          |
+//!
+//! [ alt ]
+//! [ abort relay ]              |            |          |
+//!   |                          x recv Terminate        |
+//!   |                          |            |          |
+//!   |                          |----------->|          |
+//!   |                          |send(())    x          |
+//!   |                          |                       |
+//!   |                          |---------------------->|
+//!   |                          |send(())               |
+//!   |                          |                       |
+//!   |                          |<----------------------x
+//!   |                          |             Disconnect
+//!   |                          |
+//! ```
+use std::collections::HashMap;
 use std::net::TcpStream;
 use std::sync::{
-    mpsc::{self, Receiver, SyncSender},
+    mpsc::{self, Receiver, Sender, SyncSender},
     Arc, Mutex,
 };
 use std::thread;
 
 use log::*;
+use rand::prelude::*;
 
 use crate::acceptor::{Binder, TcpBinder};
 use crate::auth_service::{AuthService, NoAuthService};
@@ -13,46 +80,13 @@ use crate::byte_stream::ByteStream;
 use crate::config::ServerConfig;
 use crate::connector::{Connector, TcpUdpConnector};
 use crate::error::Error;
-use crate::model;
 use crate::model::{ProtocolVersion, SocketAddr};
 use crate::server_command::ServerCommand;
-use crate::session::Session;
-
-#[derive(Debug)]
-pub struct SessionHandle {
-    handle: thread::JoinHandle<Result<(), Error>>,
-    tx: SyncSender<()>,
-}
-
-impl SessionHandle {
-    fn new(handle: thread::JoinHandle<Result<(), Error>>, tx: SyncSender<()>) -> Self {
-        Self { handle, tx }
-    }
-
-    fn stop(&self) -> Result<(), model::Error> {
-        use model::ErrorKind;
-        self.tx.send(()).map_err(|_| {
-            ErrorKind::message_fmt(format_args!("session stop fail: {:?}", self.handle)).into()
-        })
-    }
-
-    fn join(self) -> thread::Result<Result<(), Error>> {
-        match self.handle.join() {
-            Ok(res) => {
-                debug!("join session: {:?}", res);
-                Ok(res)
-            }
-            Err(err) => {
-                error!("join session error: {:?}", err);
-                Err(err)
-            }
-        }
-    }
-}
+use crate::session::{Session, SessionHandle, SessionId};
 
 pub struct Server<S, T, C> {
     config: ServerConfig,
-    tx_cmd: SyncSender<ServerCommand<S>>,
+    tx_cmd: Sender<ServerCommand<S>>,
     rx_cmd: Receiver<ServerCommand<S>>,
     /// bind server address
     binder: T,
@@ -61,13 +95,15 @@ pub struct Server<S, T, C> {
     /// make connection to service host
     connector: C,
     protocol_version: ProtocolVersion,
-    session: Vec<SessionHandle>,
+    session: HashMap<SessionId, SessionHandle>,
+    /// random context for generating SessionIds
+    id_rng: StdRng,
 }
 
 /// spawn a thread send accepted stream to `tx`
 fn spawn_acceptor<S>(
     acceptor: impl Iterator<Item = (S, SocketAddr)> + Send + 'static,
-    tx: SyncSender<ServerCommand<S>>,
+    tx: Sender<ServerCommand<S>>,
 ) -> thread::JoinHandle<()>
 where
     S: ByteStream + 'static,
@@ -85,7 +121,7 @@ where
 
 /// spawn a thread perform `Session.start`
 fn spawn_session<S, D, M>(
-    session: Session<D, M>,
+    session: Session<D, M, S>,
     // termination message sender
     tx: SyncSender<()>,
     addr: SocketAddr,
@@ -96,25 +132,11 @@ where
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    SessionHandle::new(
-        thread::spawn(move || match session.start(addr, strm) {
-            Ok((relay1, relay2)) => {
-                if let Err(err) = relay1.join() {
-                    error!("relay1 join: {:?}", err);
-                }
-                if let Err(err) = relay2.join() {
-                    error!("relay2 join: {:?}", err);
-                }
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }),
-        tx,
-    )
+    SessionHandle::new(thread::spawn(move || session.start(addr, strm)), tx)
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
-    pub fn new(config: ServerConfig) -> (Self, mpsc::SyncSender<ServerCommand<TcpStream>>) {
+    pub fn new(config: ServerConfig) -> (Self, mpsc::Sender<ServerCommand<TcpStream>>) {
         let (tx_done, rx_done) = mpsc::sync_channel(1);
         Server::<TcpStream, TcpBinder, TcpUdpConnector>::with_binder(
             config.clone(),
@@ -140,8 +162,8 @@ where
         binder: T,
         tx_acceptor_done: SyncSender<()>,
         connector: C,
-    ) -> (Self, SyncSender<ServerCommand<S>>) {
-        let (tx, rx) = mpsc::sync_channel(0);
+    ) -> (Self, Sender<ServerCommand<S>>) {
+        let (tx, rx) = mpsc::channel();
         (
             Self {
                 config,
@@ -151,12 +173,25 @@ where
                 tx_acceptor_done,
                 connector,
                 protocol_version: ProtocolVersion::from(5),
-                session: vec![],
+                session: HashMap::new(),
+                id_rng: StdRng::from_entropy(),
             },
             tx,
         )
     }
 
+    fn next_session_id(&mut self) -> SessionId {
+        loop {
+            let next_candidate = self.id_rng.next_u32().into();
+            if self.session.contains_key(&next_candidate) {
+                continue;
+            }
+            debug!("next session id is issued: {}", next_candidate);
+            return next_candidate;
+        }
+    }
+
+    /// Server main loop
     pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
         let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone());
@@ -166,15 +201,12 @@ where
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
-                    info!("terminating sessions...");
                     trace!("stopping accept thread...");
                     self.tx_acceptor_done.send(()).ok();
                     trace!("stopping session threads...");
-                    self.session.iter().for_each(|ss| {
-                        ss.stop().ok();
-                    });
+                    self.session.iter().for_each(|(_, ss)| ss.stop());
 
-                    self.session.drain(..).for_each(|ss| {
+                    self.session.drain().for_each(|(_, ss)| {
                         ss.join().ok();
                     });
                     trace!("session threads are stopped");
@@ -183,15 +215,30 @@ where
                     break;
                 }
                 Connect(stream, addr) => {
-                    info!("connect from: {}", addr);
                     let (session, tx) = Session::new(
+                        self.next_session_id(),
                         self.protocol_version,
                         self.connector.clone(),
                         NoAuthService::new(),
                         self.config.server_addr(),
                         self.config.connect_rule(),
+                        self.tx_cmd.clone(),
                     );
-                    self.session.push(spawn_session(session, tx, addr, stream));
+                    self.session
+                        .insert(session.id, spawn_session(session, tx, addr, stream));
+                }
+                Disconnect(id) => {
+                    if let Some(session) = self.session.remove(&id) {
+                        debug!("stopping session: {}", id);
+                        session.stop();
+                        match session.join() {
+                            Ok(Ok(())) => info!("session is stopped: {}", id),
+                            Ok(Err(err)) => error!("session error: {}: {}", id, err),
+                            Err(err) => error!("session panic: {}: {:?}", id, err),
+                        }
+                    } else {
+                        error!("session already be stopped: {}", id);
+                    }
                 }
             }
         }
@@ -207,6 +254,7 @@ mod test {
     use crate::byte_stream::test::*;
     use crate::config::*;
     use crate::connector::*;
+    use crate::model;
 
     use std::borrow::Cow;
     use std::ops::Deref;
@@ -228,19 +276,21 @@ mod test {
             tx_done,
             TcpUdpConnector::new(None),
         );
-        let shutdown = Arc::new(Mutex::new(SystemTime::now()));
+        let req_shutdown = Arc::new(Mutex::new(SystemTime::now()));
+
         let th = {
-            let shutdown = shutdown.clone();
+            let req_shutdown = req_shutdown.clone();
             thread::spawn(move || {
-                server.serve().ok();
-                *shutdown.lock().unwrap() = SystemTime::now();
+                thread::sleep(Duration::from_secs(1));
+                *req_shutdown.lock().unwrap() = SystemTime::now();
+                tx.send(ServerCommand::Terminate).unwrap();
             })
         };
-        thread::sleep(Duration::from_secs(1));
-        let req_shutdown = SystemTime::now();
-        tx.send(ServerCommand::Terminate).unwrap();
+
+        server.serve().ok();
+        let shutdown = SystemTime::now();
         th.join().unwrap();
-        assert!(shutdown.lock().unwrap().deref() > &req_shutdown);
+        assert!(&shutdown > req_shutdown.lock().unwrap().deref());
     }
 
     struct DummyBinder {
@@ -260,25 +310,35 @@ mod test {
     #[test]
     fn dummy_binder() {
         let binder = DummyBinder {
-            stream: BufferStream::new(
+            stream: BufferStream::with_buffer(
                 Cow::from(b"dummy read".to_vec()),
                 Cow::from(b"dummy write".to_vec()),
             ),
             src_addr: "127.0.0.1:1080".parse().unwrap(),
         };
-        let (tx_done, _rx_done) = mpsc::sync_channel(1);
-        let (mut server, tx) = Server::with_binder(
-            ServerConfig::default(),
-            binder,
-            tx_done,
-            TcpUdpConnector::new(None),
-        );
-        let th = thread::spawn(move || {
-            server.serve().ok();
-        });
+        let tx = Arc::new(Mutex::new(None));
+        let th = {
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let (tx_done, _rx_done) = mpsc::sync_channel(1);
+                let (mut server, stx) = Server::with_binder(
+                    ServerConfig::default(),
+                    binder,
+                    tx_done,
+                    TcpUdpConnector::new(None),
+                );
+                *tx.lock().unwrap() = Some(stx);
+                server.serve().ok();
+            })
+        };
 
         thread::sleep(Duration::from_secs(1));
-        tx.send(ServerCommand::Terminate).unwrap();
+        tx.lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .send(ServerCommand::Terminate)
+            .unwrap();
         th.join().unwrap();
     }
 }

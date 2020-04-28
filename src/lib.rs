@@ -1,3 +1,5 @@
+//! A SOCKS5 proxy server
+//!
 pub mod acceptor;
 mod auth_service;
 mod byte_stream;

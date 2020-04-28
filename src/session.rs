@@ -1,52 +1,106 @@
+use std::fmt;
 use std::ops::{Deref, DerefMut};
-use std::sync::mpsc;
-use std::thread::JoinHandle;
+use std::sync::mpsc::{self, SyncSender};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use log::*;
 
 use crate::auth_service::AuthService;
 use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
-use crate::error::Error;
-use crate::model;
 use crate::model::dao::*;
-use crate::model::error::ErrorKind;
 use crate::model::model::*;
-use crate::relay;
+use crate::model::{Error, ErrorKind};
+use crate::relay::{self, RelayHandle};
 use crate::rw_socks_stream::ReadWriteStream;
+use crate::server_command::ServerCommand;
 
-#[derive(Debug)]
-pub struct Session<D, S> {
-    pub version: ProtocolVersion,
-    pub dst_connector: D,
-    pub authorizer: S,
-    pub server_addr: SocketAddr,
-    pub conn_rule: ConnectRule,
-    // termination message receiver
-    rx: mpsc::Receiver<()>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SessionId(pub u32);
+
+impl From<u32> for SessionId {
+    fn from(id: u32) -> Self {
+        Self(id)
+    }
 }
 
-impl<D, S> Session<D, S>
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SessionId({})", self.0)
+    }
+}
+
+#[derive(Debug)]
+pub struct SessionHandle {
+    handle: thread::JoinHandle<Result<RelayHandle, Error>>,
+    tx: SyncSender<()>,
+}
+
+impl SessionHandle {
+    pub fn new(handle: thread::JoinHandle<Result<RelayHandle, Error>>, tx: SyncSender<()>) -> Self {
+        Self { handle, tx }
+    }
+
+    pub fn stop(&self) {
+        // ignore disconnected error. if the receiver is deallocated,
+        // relay threads should have been terminated.
+        if self.tx.send(()).is_ok() {
+            // send message to in- and out- relays
+            self.tx.send(()).ok();
+        }
+    }
+
+    pub fn join(self) -> thread::Result<Result<(), Error>> {
+        match self.handle.join()? {
+            Ok(relay) => relay.join(),
+            Err(err) => Ok(Err(err)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Session<D, A, S> {
+    pub id: SessionId,
+    pub version: ProtocolVersion,
+    pub dst_connector: D,
+    pub authorizer: A,
+    pub server_addr: SocketAddr,
+    pub conn_rule: ConnectRule,
+    /// termination message receiver
+    rx: Arc<Mutex<mpsc::Receiver<()>>>,
+    /// Send `Disconnect` command to the main thread.
+    /// This guard is shared with 2 relays.
+    guard: Arc<Mutex<DisconnectGuard<S>>>,
+}
+
+impl<D, A, S> Session<D, A, S>
 where
     D: Connector,
-    S: AuthService,
+    A: AuthService,
+    S: Send + 'static,
 {
+    /// Returns Self and termination message sender.
     pub fn new(
+        id: SessionId,
         version: ProtocolVersion,
         dst_connector: D,
-        authorizer: S,
+        authorizer: A,
         server_addr: SocketAddr,
         conn_rule: ConnectRule,
+        tx_cmd: mpsc::Sender<ServerCommand<S>>,
     ) -> (Self, mpsc::SyncSender<()>) {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = mpsc::sync_channel(2);
         (
             Self {
+                id,
                 version,
                 dst_connector,
                 authorizer,
                 server_addr,
                 conn_rule,
-                rx,
+                rx: Arc::new(Mutex::new(rx)),
+                guard: Arc::new(Mutex::new(DisconnectGuard::new(id, tx_cmd))),
             },
             tx,
         )
@@ -60,10 +114,7 @@ where
         }
     }
 
-    fn make_session<'a>(
-        self,
-        mut src_conn: impl ByteStream + 'a,
-    ) -> Result<(JoinHandle<()>, JoinHandle<()>), model::Error> {
+    fn make_session<'a>(&self, mut src_conn: impl ByteStream + 'a) -> Result<RelayHandle, Error> {
         let mut socks = ReadWriteStream::new(&mut src_conn);
 
         let select = negotiate_auth_method(self.version, &self.authorizer, &mut socks)?;
@@ -93,19 +144,20 @@ where
             }
         };
 
-        relay::spawn_relay(socks.into_inner(), conn, self.rx)
+        relay::spawn_relay(
+            socks.into_inner(),
+            conn,
+            self.rx.clone(),
+            self.guard.clone(),
+        )
     }
 
     pub fn start<'a>(
         self,
         _addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
-    ) -> Result<(JoinHandle<()>, JoinHandle<()>), Error> {
-        self.make_session(src_conn).map_err(|err| {
-            error!("session error: {}", err);
-            trace!("session error: {:?}", err);
-            err.into()
-        })
+    ) -> Result<RelayHandle, Error> {
+        self.make_session(src_conn)
     }
 }
 
@@ -114,7 +166,7 @@ fn perform_command(
     connector: impl Deref<Target = impl Connector>,
     rule: &ConnectRule,
     connect_to: Address,
-) -> Result<impl ByteStream, model::Error> {
+) -> Result<impl ByteStream, Error> {
     match cmd {
         Command::Connect => {}
         cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
@@ -130,7 +182,7 @@ fn negotiate_auth_method<'a>(
     version: ProtocolVersion,
     auth: impl Deref<Target = impl AuthService>,
     mut socks: impl DerefMut<Target = impl SocksStream>,
-) -> Result<MethodSelection, model::Error> {
+) -> Result<MethodSelection, Error> {
     let candidates = socks.recv_method_candidates()?;
     trace!("candidates: {:?}", candidates);
 
@@ -148,11 +200,30 @@ fn negotiate_auth_method<'a>(
     }
 }
 
-fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<(), model::Error> {
+fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<(), Error> {
     if rule.check(addr.clone(), proto) {
         Ok(())
     } else {
-        Err(model::ErrorKind::connection_not_allowed(addr, proto).into())
+        Err(ErrorKind::connection_not_allowed(addr, proto).into())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DisconnectGuard<S> {
+    id: SessionId,
+    tx: mpsc::Sender<ServerCommand<S>>,
+}
+
+impl<S> DisconnectGuard<S> {
+    pub fn new(id: SessionId, tx: mpsc::Sender<ServerCommand<S>>) -> Self {
+        Self { id, tx }
+    }
+}
+
+impl<S> Drop for DisconnectGuard<S> {
+    fn drop(&mut self) {
+        debug!("DisconnectGuard: {}", self.id);
+        self.tx.send(ServerCommand::Disconnect(self.id)).unwrap()
     }
 }
 
@@ -164,31 +235,26 @@ mod test {
     use crate::connector::test::BufferConnector;
     use crate::rw_socks_stream as socks;
     use std::io;
+    use std::iter::FromIterator;
     use std::str::FromStr;
 
     #[test]
     fn no_acceptable_method() {
-        let req = ConnectRequest {
-            version: 5.into(),
-            command: Command::Connect,
-            connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
-        };
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
+            0.into(),
             5.into(),
-            BufferConnector::<BufferStream> {
-                strms: vec![(
-                    req.connect_to.clone(),
-                    Ok(BufferStream::new(vec![].into(), vec![].into())),
-                )]
-                .into_iter()
-                .collect(),
-            },
+            BufferConnector::from_iter(vec![(
+                "192.168.0.1:5123".parse().unwrap(),
+                Ok(BufferStream::new()),
+            )]),
             RejectService,
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
         println!("session: {:?}", session);
-        let src = BufferStream::new(vec![5, 1, 0].into(), vec![].into());
+        let src = BufferStream::with_buffer(vec![5, 1, 0].into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::NoAcceptableMethod
@@ -198,29 +264,18 @@ mod test {
     #[test]
     fn command_not_supported() {
         use crate::auth_service::NoAuthService;
-        let mcand = MethodCandidates {
-            version: 5.into(),
-            method: vec![model::Method::NoAuth],
-        };
-        let req = ConnectRequest {
-            version: 5.into(),
-            // udp is not unsupported
-            command: Command::UdpAssociate,
-            connect_to: Address::from_str("192.168.0.1:5123").unwrap(),
-        };
+        let mcand = MethodCandidates::new(&[Method::NoAuth]);
+        // udp is not unsupported
+        let req = ConnectRequest::udp_associate(Address::from_str("192.168.0.1:5123").unwrap());
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
+            1.into(),
             5.into(),
-            BufferConnector::<BufferStream> {
-                strms: vec![(
-                    req.connect_to.clone(),
-                    Ok(BufferStream::new(vec![].into(), vec![].into())),
-                )]
-                .into_iter()
-                .collect(),
-            },
+            BufferConnector::from_iter(vec![(req.connect_to.clone(), Ok(BufferStream::new()))]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
         println!("session: {:?}", session);
 
@@ -230,7 +285,7 @@ mod test {
             socks::test::write_connect_request(&mut cursor, req).unwrap();
             cursor.into_inner()
         };
-        let src = BufferStream::new(buff.into(), vec![].into());
+        let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::command_not_supported(Command::UdpAssociate)
@@ -242,19 +297,15 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
+            2.into(),
             version,
-            BufferConnector::<BufferStream> {
-                strms: vec![(
-                    connect_to.clone(),
-                    Ok(BufferStream::new(vec![].into(), vec![].into())),
-                )]
-                .into_iter()
-                .collect(),
-            },
+            BufferConnector::from_iter(vec![(connect_to.clone(), Ok(BufferStream::new()))]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::none(),
+            tx,
         );
         println!("session: {:?}", session);
 
@@ -262,24 +313,17 @@ mod test {
             let mut cursor = io::Cursor::new(vec![]);
             socks::test::write_method_candidates(
                 &mut cursor,
-                MethodCandidates {
-                    version,
-                    method: vec![model::Method::NoAuth],
-                },
+                MethodCandidates::new(&[Method::NoAuth]),
             )
             .unwrap();
             socks::test::write_connect_request(
                 &mut cursor,
-                ConnectRequest {
-                    version,
-                    command: Command::Connect,
-                    connect_to: connect_to.clone(),
-                },
+                ConnectRequest::connect_to(connect_to.clone()),
             )
             .unwrap();
             cursor.into_inner()
         };
-        let src = BufferStream::new(buff.into(), vec![].into());
+        let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::connection_not_allowed(connect_to, L4Protocol::Tcp)
@@ -291,16 +335,18 @@ mod test {
         use crate::auth_service::NoAuthService;
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::from_str("192.168.0.1:5123").unwrap();
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
         let (session, _) = Session::new(
+            3.into(),
             version,
-            BufferConnector::<BufferStream> {
-                strms: vec![(connect_to.clone(), Err(ConnectError::ConnectionRefused))]
-                    .into_iter()
-                    .collect(),
-            },
+            BufferConnector::<BufferStream>::from_iter(vec![(
+                connect_to.clone(),
+                Err(ConnectError::ConnectionRefused),
+            )]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
         println!("session: {:?}", session);
 
@@ -308,24 +354,17 @@ mod test {
             let mut cursor = io::Cursor::new(vec![]);
             socks::test::write_method_candidates(
                 &mut cursor,
-                MethodCandidates {
-                    version,
-                    method: vec![model::Method::NoAuth],
-                },
+                MethodCandidates::new(&[Method::NoAuth]),
             )
             .unwrap();
             socks::test::write_connect_request(
                 &mut cursor,
-                ConnectRequest {
-                    version,
-                    command: Command::Connect,
-                    connect_to: connect_to.clone(),
-                },
+                ConnectRequest::connect_to(connect_to.clone()),
             )
             .unwrap();
             cursor.into_inner()
         };
-        let src = BufferStream::new(buff.into(), vec![].into());
+        let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
             session.make_session(src).unwrap_err().kind(),
             &ErrorKind::connection_refused(connect_to, L4Protocol::Tcp)
@@ -349,24 +388,24 @@ mod test {
     fn relay_contents() {
         use crate::auth_service::NoAuthService;
         use io::Write;
+
         let version: ProtocolVersion = 5.into();
         let connect_to = Address::Domain("example.com".into(), 5123);
-        let (session, tx) = Session::new(
+        let (tx, _rx) = mpsc::channel::<ServerCommand<()>>();
+        let (session, _tx_session_term) = Session::new(
+            4.into(),
             version,
-            BufferConnector {
-                strms: vec![(
-                    connect_to.clone(),
-                    Ok(BufferStream::new(
-                        gen_random_vec(8200).into(),
-                        vec![].into(),
-                    )),
-                )]
-                .into_iter()
-                .collect(),
-            },
+            BufferConnector::from_iter(vec![(
+                connect_to.clone(),
+                Ok(BufferStream::with_buffer(
+                    gen_random_vec(8200).into(),
+                    vec![].into(),
+                )),
+            )]),
             NoAuthService::new(),
             "0.0.0.0:1080".parse().unwrap(),
             ConnectRule::any(),
+            tx,
         );
 
         // length of SOCKS message (len MethodCandidates + len ConnectRequest)
@@ -376,33 +415,23 @@ mod test {
             let mut cursor = io::Cursor::new(vec![]);
             socks::test::write_method_candidates(
                 &mut cursor,
-                MethodCandidates {
-                    version,
-                    method: vec![model::Method::NoAuth],
-                },
+                MethodCandidates::new(&[Method::NoAuth]),
             )
             .unwrap();
             socks::test::write_connect_request(
                 &mut cursor,
-                ConnectRequest {
-                    version,
-                    // udp is not unsupported
-                    command: Command::Connect,
-                    connect_to: connect_to.clone(),
-                },
+                ConnectRequest::connect_to(connect_to.clone()),
             )
             .unwrap();
             input_stream_pos = cursor.position();
             // binaries from client
             cursor.write_all(&gen_random_vec(8200)).unwrap();
-            BufferStream::new(cursor.into_inner().into(), vec![].into())
+            BufferStream::with_buffer(cursor.into_inner().into(), vec![].into())
         };
         let dst_connector = session.dst_connector.clone();
         // start relay
-        let (relay_out, relay_in) = session.make_session(src.clone()).unwrap();
-        tx.send(()).unwrap();
-        assert!(relay_out.join().is_ok());
-        assert!(relay_in.join().is_ok());
+        let relay = session.make_session(src.clone()).unwrap();
+        assert!(relay.join().is_ok());
 
         // check for replied command from Session to client
         {
@@ -412,7 +441,7 @@ mod test {
                 socks::test::read_method_selection(&mut *src.wr_buff()).unwrap(),
                 MethodSelection {
                     version,
-                    method: model::Method::NoAuth
+                    method: Method::NoAuth
                 }
             );
             assert_eq!(
