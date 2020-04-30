@@ -2,11 +2,7 @@ FROM rust:1.40.0-slim-stretch AS builder
 
 WORKDIR /gatekeeper
 
-COPY ./src            src
-COPY ./.cargo         .cargo
-COPY ./Cargo.lock     .
-COPY ./Cargo.toml     .
-COPY ./rust-toolchain .
+COPY . .
 
 # hadolint ignore=DL3015
 RUN apt-get update && \

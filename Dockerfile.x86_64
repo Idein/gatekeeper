@@ -1,10 +1,6 @@
 FROM ekidd/rust-musl-builder:1.40.0 AS builder
 
-COPY ./src            src
-COPY ./.cargo         .cargo
-COPY ./Cargo.lock     .
-COPY ./Cargo.toml     .
-COPY ./rust-toolchain .
+COPY . .
 
 RUN cargo build --release && \
       strip /home/rust/src/target/x86_64-unknown-linux-musl/release/gatekeeperd
