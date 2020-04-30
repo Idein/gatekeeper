@@ -132,7 +132,7 @@ workflows:
           matrix:
             parameters:
               tag_name: ["latest"]
-              target: ["arm32v7"]
+              target: ["arm32v6", "arm32v7"]
           filters:
             branches:
               only: master
@@ -143,7 +143,7 @@ workflows:
           name: "deploy-$CIRCLE_TAG-<<matrix.target>>"
           matrix:
             parameters:
-              target: ["arm32v7"]
+              target: ["arm32v6", "arm32v7"]
           filters:
             tags:
               only: /^v.*/
