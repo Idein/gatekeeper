@@ -1,4 +1,13 @@
 version: 2.1
+
+constants:
+  version-parameter: &version-parameter
+    version:
+      type: string
+  target-parameter: &target-parameter
+    target:
+      type: string
+
 commands:
   restore-rust-cache:
     steps:
@@ -33,7 +42,19 @@ commands:
           key: *cache-key-rustup
           paths:
             - ~/.rustup
-
+  deploy:
+    parameters:
+      <<: *version-parameter
+      <<: *target-parameter
+    steps:
+      - run:
+          name: Deploy docker image (<<parameters.version>>) (<<parameters.target>>)
+          command: |
+            version=<<parameters.version>>
+            target=<<parameters.target>>
+            echo $DOCKER_PASSWORD | docker login --username $DOCKER_USER --password-stdin
+            docker build -t "idein/gatekeeper:${version}-${target}" -f "Dockerfile.${target}" .
+            docker push "idein/gatekeeper:${version}-${target}"
 
 jobs:
   build:
@@ -98,24 +119,44 @@ jobs:
             cargo test --verbose -- --nocapture --ignored
       - save-rust-cache
 
-  deploy:
+  deploy-latest:
     machine: true
     parameters:
-      tag_name:
-        default: "$CIRCLE_TAG"
-        type: string
-      target:
-        type: string
+      <<: *target-parameter
+    steps:
+      - checkout
+      - deploy:
+          version: latest
+          target: <<parameters.target>>
+
+  deploy-tags:
+    machine: true
+    parameters:
+      <<: *target-parameter
     steps:
       - checkout
       - run:
-          name: Deploy docker image (<<parameters.tag_name>>) (<<parameters.target>>)
+          name: "Set environment variables: $MAJOR, $MINOR, $PATCH"
           command: |
-            tag_name=<<parameters.tag_name>>
-            target=<<parameters.target>>
-            echo $DOCKER_PASSWORD | docker login --username $DOCKER_USER --password-stdin
-            docker build -t "idein/gatekeeper:${tag_name}-${target}" -f "Dockerfile.${target}" .
-            docker push "idein/gatekeeper:${tag_name}-${target}"
+            TAG=$(git describe --tags)                                    #=> v1.2.3
+            TAG=${TAG#v}                                                  #=> 1.2.3
+            MAJOR="$(echo $TAG | cut -d. -f1)"                            #=> 1
+            MINOR="$(echo $TAG | cut -d. -f1).$(echo $TAG | cut -d. -f2)" #=> 1.2
+            PATCH="$TAG"                                                  #=> 1.2.3
+
+            # sharing environment variables between steps
+            echo "export MAJOR=$MAJOR" >> $BASH_ENV
+            echo "export MINOR=$MINOR" >> $BASH_ENV
+            echo "export PATCH=$PATCH" >> $BASH_ENV
+      - deploy:
+          version: $MAJOR
+          target: <<parameters.target>>
+      - deploy:
+          version: $MINOR
+          target: <<parameters.target>>
+      - deploy:
+          version: $PATCH
+          target: <<parameters.target>>
 
 workflows:
   version: 2
@@ -126,21 +167,19 @@ workflows:
           requires:
             - build
 
-  deploy_latest_tag:
+  deploy-latest:
     jobs:
-      - deploy:
+      - deploy-latest:
           matrix:
             parameters:
-              tag_name: ["latest"]
               target: ["arm32v6", "arm32v7"]
           filters:
             branches:
               only: master
 
-  deploy_pushed_tag:
+  deploy-tags:
     jobs:
-      - deploy:
-          name: "deploy-$CIRCLE_TAG-<<matrix.target>>"
+      - deploy-tags:
           matrix:
             parameters:
               target: ["arm32v6", "arm32v7"]
