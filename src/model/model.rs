@@ -1,5 +1,6 @@
 //! SOCKS5 message types exchanged between client and proxy.
 //!
+//! ```text
 //! client            proxy            service
 //!   |                 |                 |
 //!   .                 .                 .
@@ -26,6 +27,7 @@
 //!   .                 .                 .
 //!   .                 .                 .
 //!   |                 |                 |
+//! ```
 //!
 use std::fmt;
 use std::net::ToSocketAddrs;
