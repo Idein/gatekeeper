@@ -1,4 +1,13 @@
 version: 2.1
+
+constants:
+  version-parameter: &version-parameter
+    version:
+      type: string
+  target-parameter: &target-parameter
+    target:
+      type: string
+
 commands:
   restore-rust-cache:
     steps:
@@ -33,7 +42,19 @@ commands:
           key: *cache-key-rustup
           paths:
             - ~/.rustup
-
+  deploy:
+    parameters:
+      <<: *version-parameter
+      <<: *target-parameter
+    steps:
+      - run:
+          name: Deploy docker image (<<parameters.version>>) (<<parameters.target>>)
+          command: |
+            version=<<parameters.version>>
+            target=<<parameters.target>>
+            echo $DOCKER_PASSWORD | docker login --username $DOCKER_USER --password-stdin
+            docker build -t "idein/gatekeeper:${version}-${target}" -f "Dockerfile.${target}" .
+            docker push "idein/gatekeeper:${version}-${target}"
 
 jobs:
   build:
@@ -98,6 +119,45 @@ jobs:
             cargo test --verbose -- --nocapture --ignored
       - save-rust-cache
 
+  deploy-latest:
+    machine: true
+    parameters:
+      <<: *target-parameter
+    steps:
+      - checkout
+      - deploy:
+          version: latest
+          target: <<parameters.target>>
+
+  deploy-tags:
+    machine: true
+    parameters:
+      <<: *target-parameter
+    steps:
+      - checkout
+      - run:
+          name: "Set environment variables: $MAJOR, $MINOR, $PATCH"
+          command: |
+            TAG=$(git describe --tags)                                    #=> v1.2.3
+            TAG=${TAG#v}                                                  #=> 1.2.3
+            MAJOR="$(echo $TAG | cut -d. -f1)"                            #=> 1
+            MINOR="$(echo $TAG | cut -d. -f1).$(echo $TAG | cut -d. -f2)" #=> 1.2
+            PATCH="$TAG"                                                  #=> 1.2.3
+
+            # sharing environment variables between steps
+            echo "export MAJOR=$MAJOR" >> $BASH_ENV
+            echo "export MINOR=$MINOR" >> $BASH_ENV
+            echo "export PATCH=$PATCH" >> $BASH_ENV
+      - deploy:
+          version: $MAJOR
+          target: <<parameters.target>>
+      - deploy:
+          version: $MINOR
+          target: <<parameters.target>>
+      - deploy:
+          version: $PATCH
+          target: <<parameters.target>>
+
 workflows:
   version: 2
   build_and_test:
@@ -107,3 +167,24 @@ workflows:
           requires:
             - build
 
+  deploy-latest:
+    jobs:
+      - deploy-latest:
+          matrix:
+            parameters:
+              target: ["x86_64", "arm32v6", "arm32v7"]
+          filters:
+            branches:
+              only: master
+
+  deploy-tags:
+    jobs:
+      - deploy-tags:
+          matrix:
+            parameters:
+              target: ["x86_64", "arm32v6", "arm32v7"]
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/

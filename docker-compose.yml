@@ -14,7 +14,9 @@ services:
       - socks_network
 
   gatekeeper:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.x86_64
     image: gatekeeper:latest
     container_name: gatekeeper
     environment:

@@ -1,0 +1,22 @@
+FROM rust:1.40.0-slim-stretch AS builder
+
+WORKDIR /gatekeeper
+
+COPY . .
+
+# hadolint ignore=DL3015
+RUN apt-get update && \
+    apt-get install -y --install-recommends gcc-arm-linux-gnueabihf=* && \
+    rustup target add arm-unknown-linux-gnueabihf && \
+    cargo build --target=arm-unknown-linux-gnueabihf --release && \
+    cp target/arm-unknown-linux-gnueabihf/release/gatekeeperd /
+
+FROM raspbian/stretch:041518
+
+COPY --from=builder /gatekeeperd /
+
+EXPOSE 1080
+
+ENV RUST_LOG gatekeeper=info
+
+ENTRYPOINT ["/gatekeeperd"]
