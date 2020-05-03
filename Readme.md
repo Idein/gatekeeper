@@ -128,7 +128,7 @@ Value of these fields are either `Any` or `Specif`.
       Specif:
         IpAddr:
           addr: 192.168.0.1
-          mask: 24
+          prefix: 24
     ```
 
     ```yaml
@@ -190,7 +190,7 @@ Value of these fields are either `Any` or `Specif`.
           Specif:
             IpAddr:
               addr: 192.168.0.1
-              mask: 16
+              prefix: 16
         port: Any
         protocol: Any
     ```

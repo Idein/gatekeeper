@@ -253,7 +253,7 @@ pub struct UdpDatagram<'a> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AddressPattern {
     /// e.g. 127.0.0.1/16
-    IpAddr { addr: IpAddr, mask: u8 },
+    IpAddr { addr: IpAddr, prefix: u8 },
     Domain {
         #[serde(with = "serde_regex")]
         pattern: Regex,
@@ -275,22 +275,22 @@ impl Matcher for AddressPattern {
             (
                 P::IpAddr {
                     addr: IpAddr::V4(addrp),
-                    mask,
+                    prefix,
                 },
                 Address::IpAddr(IpAddr::V4(addr), _),
             ) => {
-                let bmask = !0u32 << mask;
+                let bmask = !0u32 << prefix;
                 u32::from_be_bytes(addrp.octets()) & bmask
                     == u32::from_be_bytes(addr.octets()) & bmask
             }
             (
                 P::IpAddr {
                     addr: IpAddr::V6(addrp),
-                    mask,
+                    prefix,
                 },
                 Address::IpAddr(IpAddr::V6(addr), _),
             ) => {
-                let bmask = !0u128 << mask;
+                let bmask = !0u128 << prefix;
                 u128::from_be_bytes(addrp.octets()) & bmask
                     == u128::from_be_bytes(addr.octets()) & bmask
             }
@@ -637,7 +637,7 @@ mod test {
         rule.allow(
             Specif(Pat::IpAddr {
                 addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
+                prefix: 16,
             }),
             Specif(80),
             Any,
@@ -645,7 +645,7 @@ mod test {
         rule.allow(
             Specif(Pat::IpAddr {
                 addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
+                prefix: 16,
             }),
             Specif(443),
             Any,
@@ -667,7 +667,7 @@ mod test {
         rule.allow(
             Specif(Pat::IpAddr {
                 addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
+                prefix: 16,
             }),
             Specif(80),
             Any,
@@ -675,7 +675,7 @@ mod test {
         rule.allow(
             Specif(Pat::IpAddr {
                 addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
+                prefix: 16,
             }),
             Specif(443),
             Any,
