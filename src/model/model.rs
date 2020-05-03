@@ -279,9 +279,8 @@ impl Matcher for AddressPattern {
                 },
                 Address::IpAddr(IpAddr::V4(addr), _),
             ) => {
-                let bmask = !0u32 << prefix;
-                u32::from_be_bytes(addrp.octets()) & bmask
-                    == u32::from_be_bytes(addr.octets()) & bmask
+                let bmask = !0u32 << (32 - prefix);
+                u32::from(*addrp) & bmask == u32::from(*addr) & bmask
             }
             (
                 P::IpAddr {
@@ -637,7 +636,7 @@ mod test {
         rule.allow(
             Specif(Pat::IpAddr {
                 addr: "192.168.0.1".parse().unwrap(),
-                prefix: 16,
+                prefix: 24,
             }),
             Specif(80),
             Any,
@@ -645,16 +644,18 @@ mod test {
         rule.allow(
             Specif(Pat::IpAddr {
                 addr: "192.168.0.1".parse().unwrap(),
-                prefix: 16,
+                prefix: 24,
             }),
             Specif(443),
             Any,
         );
         assert!(!rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
-        assert!(rule.check("192.168.0.0:80".parse().unwrap(), Tcp));
-        assert!(rule.check("192.168.255.255:443".parse().unwrap(), Udp));
-        assert!(!rule.check("192.167.255.255:443".parse().unwrap(), Tcp));
-        assert!(rule.check("192.168.255.255:80".parse().unwrap(), Tcp));
+        assert!(rule.check("192.168.0.0:80".parse().unwrap(), Tcp),);
+        assert!(rule.check("192.168.0.0:443".parse().unwrap(), Tcp),);
+        assert!(!rule.check("192.168.1.2:443".parse().unwrap(), Udp));
+        assert!(!rule.check("192.167.0.3:443".parse().unwrap(), Tcp));
+        assert!(rule.check("192.168.0.255:80".parse().unwrap(), Tcp),);
+        assert!(rule.check("192.168.0.42:80".parse().unwrap(), Tcp),);
         assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
         assert!(!rule.check(Domain("actcast.io".to_owned(), 60000), Udp));
     }
