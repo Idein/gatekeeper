@@ -700,6 +700,29 @@ mod test {
     }
 
     #[test]
+    fn ipv6_pattern() {
+        use AddressPattern as Pat;
+        use RulePattern::*;
+        let mut rule = ConnectRule::none();
+        rule.allow(
+            Specif(Pat::IpAddr {
+                addr: "ff01::0".parse().unwrap(),
+                prefix: 32,
+            }),
+            Any,
+            Any,
+        );
+        assert!(rule.check(
+            SocketAddrV6::new(Ipv6Addr::new(0xff01, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
+            Tcp
+        ));
+        assert!(!rule.check(
+            SocketAddrV6::new(Ipv6Addr::new(0xffff, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
+            Tcp
+        ));
+    }
+
+    #[test]
     fn example_rule() {
         use std::fs::File;
         use std::path::Path;
