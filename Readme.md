@@ -27,15 +27,14 @@ Gatekeeper allow users to restricting connection based on:
 
 ## Install
 
-You can install gatekeeper as an executable (`gatekeeperd`) from git repository.
+You can install gatekeeper as an executable (`gatekeeperd`).
 
 ```
-$ cargo install --locked --git https://github.com/Idein/gatekeeper.git
+$ cargo install gatekeeper
 $ gatekeeperd
 gatekeeperd
-gatekeeper 0.1.0
+gatekeeper 1.0.0
 ```
-
 
 ## How to use
 
