@@ -289,9 +289,8 @@ impl Matcher for AddressPattern {
                 },
                 Address::IpAddr(IpAddr::V6(addr), _),
             ) => {
-                let bmask = !0u128 << prefix;
-                u128::from_be_bytes(addrp.octets()) & bmask
-                    == u128::from_be_bytes(addr.octets()) & bmask
+                let bmask = !0u128 << (128 - prefix);
+                u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
             (P::Domain { pattern }, Address::Domain(domain, _)) => pattern.is_match(domain),
             _ => false,
@@ -661,6 +660,29 @@ mod test {
     }
 
     #[test]
+    fn ipv6_pattern() {
+        use AddressPattern as Pat;
+        use RulePattern::*;
+        let mut rule = ConnectRule::none();
+        rule.allow(
+            Specif(Pat::IpAddr {
+                addr: "ff01::0".parse().unwrap(),
+                prefix: 32,
+            }),
+            Any,
+            Any,
+        );
+        assert!(rule.check(
+            SocketAddrV6::new(Ipv6Addr::new(0xff01, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
+            Tcp
+        ));
+        assert!(!rule.check(
+            SocketAddrV6::new(Ipv6Addr::new(0xffff, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
+            Tcp
+        ));
+    }
+
+    #[test]
     fn serde_rules() {
         use AddressPattern as Pat;
         use RulePattern::*;
@@ -698,29 +720,6 @@ mod test {
         };
         println!("rule(as yaml):\n{}", serde_yaml::to_string(&rule).unwrap());
         assert_eq!(&value, &value2);
-    }
-
-    #[test]
-    fn ipv6_pattern() {
-        use AddressPattern as Pat;
-        use RulePattern::*;
-        let mut rule = ConnectRule::none();
-        rule.allow(
-            Specif(Pat::IpAddr {
-                addr: "ff01::0".parse().unwrap(),
-                prefix: 32,
-            }),
-            Any,
-            Any,
-        );
-        assert!(rule.check(
-            SocketAddrV6::new(Ipv6Addr::new(0xff01, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
-            Tcp
-        ));
-        assert!(!rule.check(
-            SocketAddrV6::new(Ipv6Addr::new(0xffff, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
-            Tcp
-        ));
     }
 
     #[test]
