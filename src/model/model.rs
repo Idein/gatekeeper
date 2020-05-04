@@ -414,6 +414,30 @@ impl ConnectRuleEntry {
 /// Connection rules
 ///
 /// All instances of this type are constructed by `any` or `none` method.
+///
+/// # Example
+/// This example only allow connecting to local networks.
+///
+/// ```
+/// # use gatekeeper::model::L4Protocol::*;
+/// # use gatekeeper::{AddressPattern, ConnectRule, RulePattern::*};
+/// use AddressPattern as Pat;
+/// # fn main() -> Result<(), std::net::AddrParseError> {
+/// let mut rule = ConnectRule::none();
+/// rule.allow(
+///     Specif(Pat::IpAddr {
+///         addr: "192.168.0.1".parse()?,
+///         mask: 16,
+///     }),
+///     Specif(80),
+///     Any,
+/// );
+/// assert!(rule.check("192.168.0.2:80".parse()?, Tcp));
+/// assert!(!rule.check("192.167.0.2:80".parse()?, Udp));
+/// # Ok(())
+/// # }
+/// ```
+///
 #[derive(Debug, Clone)]
 pub struct ConnectRule {
     // rules.len() >= 1
