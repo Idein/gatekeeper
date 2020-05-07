@@ -698,4 +698,20 @@ mod test {
         println!("rule(as yaml):\n{}", serde_yaml::to_string(&rule).unwrap());
         assert_eq!(&value, &value2);
     }
+
+    #[test]
+    fn example_rule() {
+        use std::fs::File;
+        use std::path::Path;
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("example.yml");
+        let example = File::open(path).unwrap();
+        let value: serde_yaml::Value = serde_yaml::from_reader(&example).unwrap();
+        println!("value: {}", serde_yaml::to_string(&value).unwrap());
+        let value2 = {
+            let rule: ConnectRule = serde_yaml::from_value(value.clone()).unwrap();
+            serde_yaml::to_value(&rule).unwrap()
+        };
+        println!("value2: {}", serde_yaml::to_string(&value).unwrap());
+        assert_eq!(&value, &value2);
+    }
 }

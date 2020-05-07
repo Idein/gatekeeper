@@ -137,7 +137,7 @@ Value of these fields are either `Any` or `Specif`.
       Specif:
         Domain:
           # regexp pattern
-          pattern: "(mail\.)?google.(com|co\.jp)"
+          pattern: "(mail\\.)?google.((com|co)\\.jp)"
     ```
 
 
