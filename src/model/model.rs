@@ -681,7 +681,7 @@ mod test {
             Any,
         );
         rule.allow(
-            Specif(Regex::new(r"(.*\.)?actcast\.io").unwrap().into()),
+            Specif(Regex::new(r"\A(.*\.)?actcast\.io\z").unwrap().into()),
             Any,
             Specif(L4Protocol::Tcp),
         );

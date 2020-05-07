@@ -108,14 +108,27 @@ impl ServerConfig {
     pub fn server_addr(&self) -> SocketAddr {
         SocketAddr::new(self.server_ip, self.server_port)
     }
+
     pub fn connect_rule(&self) -> ConnectRule {
         self.conn_rule.clone()
+    }
+
+    pub fn set_server_addr(&mut self, addr: SocketAddr) -> &mut Self {
+        self.server_ip = addr.ip();
+        self.server_port = addr.port();
+        self
+    }
+
+    pub fn set_connect_rule(&mut self, rule: ConnectRule) -> &mut Self {
+        self.conn_rule = rule;
+        self
     }
 
     pub fn set_client_rw_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
         self.client_rw_timeout = dur;
         self
     }
+
     pub fn set_server_rw_timeout(&mut self, dur: Option<Duration>) -> &mut Self {
         self.server_rw_timeout = dur;
         self

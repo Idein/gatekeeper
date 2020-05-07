@@ -1,3 +1,7 @@
+//! A SOCKS5 proxy server implemented in Rust
+//!
+//! Gatekeeperd is an SOCKS5 proxy built on gatekeeper crate.
+//!
 use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;

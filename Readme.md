@@ -25,9 +25,22 @@ Gatekeeper allow users to restricting connection based on:
 - protocol (currently, tcp is only supported)
 
 
-## Install
+## Usage
 
-You can install gatekeeper as an executable (`gatekeeperd`).
+This crate provides a library and an executable using the crate.
+
+### Crate
+
+This can be used by adding `gatekeeper` to your dependencies in your project's `Cargo.toml`.
+
+```toml
+[dependencies]
+gatekeeper = "1.0.0"
+```
+
+### Executable
+
+You can install gatekeeper as an executable (`gatekeeperd`) with `cargo install`.
 
 ```
 $ cargo install gatekeeper
