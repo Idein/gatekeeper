@@ -488,7 +488,7 @@ impl ConnectRuleEntry {
 /// rule.allow(
 ///     Specif(Pat::IpAddr {
 ///         addr: "192.168.0.1".parse()?,
-///         mask: 16,
+///         prefix: 16,
 ///     }),
 ///     Specif(80),
 ///     Any,

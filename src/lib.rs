@@ -58,13 +58,13 @@
 //! let mut rule = ConnectRule::none();
 //! // allow local ipv4 network 192.168.0.1/16
 //! rule.allow(
-//!     Specif(Pat::IpAddr { addr: "192.168.0.1".parse().unwrap(), mask: 16, }),
+//!     Specif(Pat::IpAddr { addr: "192.168.0.1".parse().unwrap(), prefix: 16, }),
 //!     Specif(80),
 //!     Any,
 //! );
 //! // allow local ipv4 network 192.168.0.1/16 port 443
 //! rule.allow(
-//!     Specif(Pat::IpAddr { addr: "192.168.0.1".parse().unwrap(), mask: 16, }),
+//!     Specif(Pat::IpAddr { addr: "192.168.0.1".parse().unwrap(), prefix: 16, }),
 //!     Specif(443),
 //!     Any,
 //! );

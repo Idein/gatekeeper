@@ -68,7 +68,7 @@ impl ServerConfig {
     ///       Specif:
     ///         IpAddr:
     ///           addr: 192.168.0.1
-    ///           mask: 16
+    ///           prefix: 16
     ///     port: Any
     ///     protocol: Any
     /// "#.as_bytes())?;
