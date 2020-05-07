@@ -137,7 +137,7 @@ Value of these fields are either `Any` or `Specif`.
       Specif:
         Domain:
           # regexp pattern
-          pattern: "(mail\\.)?google.((com|co)\\.jp)"
+          pattern: '\A(mail\.)?google.((com|co)\.jp)\z'
     ```
 
 
@@ -204,7 +204,7 @@ Value of these fields are either `Any` or `Specif`.
         address:
           Specif:
             Domain:
-              pattern: "(www\.)?facebook\.com"
+              pattern: '\A(www\.)?facebook\.com\z'
         port: Any
         protocol:
           Specif: Tcp
@@ -212,7 +212,7 @@ Value of these fields are either `Any` or `Specif`.
         address:
           Specif:
             Domain:
-              pattern: "(www\.)?youtube\.com"
+              pattern: '\A(www\.)?youtube\.com\z'
         port: Any
         protocol:
           Specif: Tcp
