@@ -41,7 +41,7 @@
     address:
       Specif:
         Domain:
-          pattern: '(www\.)?youtube\.com'
+          pattern: '\A(www\.)?youtube\.com\z'
     port: Any
     protocol:
       Specif: Tcp
