@@ -25,17 +25,29 @@ Gatekeeper allow users to restricting connection based on:
 - protocol (currently, tcp is only supported)
 
 
-## Install
+## Usage
 
-You can install gatekeeper as an executable (`gatekeeperd`) from git repository.
+This crate provides a library and an executable using the crate.
+
+### Crate
+
+This can be used by adding `gatekeeper` to your dependencies in your project's `Cargo.toml`.
+
+```toml
+[dependencies]
+gatekeeper = "1.0.0"
+```
+
+### Executable
+
+You can install gatekeeper as an executable (`gatekeeperd`) with `cargo install`.
 
 ```
-$ cargo install --locked --git https://github.com/Idein/gatekeeper.git
+$ cargo install gatekeeper
 $ gatekeeperd
 gatekeeperd
-gatekeeper 0.1.0
+gatekeeper 1.0.0
 ```
-
 
 ## How to use
 
@@ -125,7 +137,7 @@ Value of these fields are either `Any` or `Specif`.
       Specif:
         Domain:
           # regexp pattern
-          pattern: "(mail\.)?google.(com|co\.jp)"
+          pattern: '\A(mail\.)?google.((com|co)\.jp)\z'
     ```
 
 
@@ -192,7 +204,7 @@ Value of these fields are either `Any` or `Specif`.
         address:
           Specif:
             Domain:
-              pattern: "(www\.)?facebook\.com"
+              pattern: '\A(www\.)?facebook\.com\z'
         port: Any
         protocol:
           Specif: Tcp
@@ -200,7 +212,7 @@ Value of these fields are either `Any` or `Specif`.
         address:
           Specif:
             Domain:
-              pattern: "(www\.)?youtube\.com"
+              pattern: '\A(www\.)?youtube\.com\z'
         port: Any
         protocol:
           Specif: Tcp

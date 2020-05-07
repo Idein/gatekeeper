@@ -1,5 +1,6 @@
 //! SOCKS5 message types exchanged between client and proxy.
 //!
+//! ```text
 //! client            proxy            service
 //!   |                 |                 |
 //!   .                 .                 .
@@ -26,6 +27,7 @@
 //!   .                 .                 .
 //!   .                 .                 .
 //!   |                 |                 |
+//! ```
 //!
 use std::fmt;
 use std::net::ToSocketAddrs;
@@ -412,6 +414,30 @@ impl ConnectRuleEntry {
 /// Connection rules
 ///
 /// All instances of this type are constructed by `any` or `none` method.
+///
+/// # Example
+/// This example only allow connecting to local networks.
+///
+/// ```
+/// # use gatekeeper::model::L4Protocol::*;
+/// # use gatekeeper::{AddressPattern, ConnectRule, RulePattern::*};
+/// use AddressPattern as Pat;
+/// # fn main() -> Result<(), std::net::AddrParseError> {
+/// let mut rule = ConnectRule::none();
+/// rule.allow(
+///     Specif(Pat::IpAddr {
+///         addr: "192.168.0.1".parse()?,
+///         mask: 16,
+///     }),
+///     Specif(80),
+///     Any,
+/// );
+/// assert!(rule.check("192.168.0.2:80".parse()?, Tcp));
+/// assert!(!rule.check("192.167.0.2:80".parse()?, Udp));
+/// # Ok(())
+/// # }
+/// ```
+///
 #[derive(Debug, Clone)]
 pub struct ConnectRule {
     // rules.len() >= 1
@@ -655,7 +681,7 @@ mod test {
             Any,
         );
         rule.allow(
-            Specif(Regex::new(r"(.*\.)?actcast\.io").unwrap().into()),
+            Specif(Regex::new(r"\A(.+\.)?actcast\.io\z").unwrap().into()),
             Any,
             Specif(L4Protocol::Tcp),
         );
@@ -670,6 +696,22 @@ mod test {
             serde_yaml::to_value(&rule).unwrap()
         };
         println!("rule(as yaml):\n{}", serde_yaml::to_string(&rule).unwrap());
+        assert_eq!(&value, &value2);
+    }
+
+    #[test]
+    fn example_rule() {
+        use std::fs::File;
+        use std::path::Path;
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("example.yml");
+        let example = File::open(path).unwrap();
+        let value: serde_yaml::Value = serde_yaml::from_reader(&example).unwrap();
+        println!("value: {}", serde_yaml::to_string(&value).unwrap());
+        let value2 = {
+            let rule: ConnectRule = serde_yaml::from_value(value.clone()).unwrap();
+            serde_yaml::to_value(&rule).unwrap()
+        };
+        println!("value2: {}", serde_yaml::to_string(&value).unwrap());
         assert_eq!(&value, &value2);
     }
 }

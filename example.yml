@@ -1,0 +1,47 @@
+## Example filter rule for gatekeeper
+#
+# default deny
+---
+- Deny:
+    address: Any
+    port: Any
+    protocol: Any
+# allow local ipv4 network 192.168.0.1/16
+- Allow:
+    address:
+      Specif:
+        IpAddr:
+          addr: 192.168.0.1
+          mask: 16
+    port: Any
+    protocol: Any
+# allow some google domains using port 443
+- Allow:
+    # {mail.,}google.{com,co.jp}
+    address:
+      Specif:
+        Domain:
+          # regexp pattern
+          pattern: '\A(mail\.)?google\.((com)|(co\.jp))\z'
+    port:
+      Specif: 443
+    protocol:
+      Specif: Tcp
+# deny facebook.com
+- Deny:
+    address:
+      Specif:
+        Domain:
+          pattern: '\A(www\.)?facebook\.com\z'
+    port: Any
+    protocol:
+      Specif: Tcp
+# deny youtube.com
+- Deny:
+    address:
+      Specif:
+        Domain:
+          pattern: '\A(www\.)?youtube\.com\z'
+    port: Any
+    protocol:
+      Specif: Tcp
