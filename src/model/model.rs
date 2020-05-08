@@ -35,6 +35,7 @@ pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketA
 use std::str::FromStr;
 
 use derive_more::{Display, From, Into};
+use failure::Fail;
 use log::*;
 use regex::Regex;
 use serde::*;
@@ -250,14 +251,76 @@ pub struct UdpDatagram<'a> {
     pub data: &'a [u8],
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub enum AddressPattern {
     /// e.g. 127.0.0.1/16
-    IpAddr { addr: IpAddr, mask: u8 },
+    IpAddr { addr: IpAddr, prefix: u8 },
     Domain {
         #[serde(with = "serde_regex")]
         pattern: Regex,
     },
+}
+
+#[derive(Fail, Debug)]
+pub enum InvalidPrefix {
+    V4 { addr: Ipv4Addr, prefix: u8 },
+    V6 { addr: Ipv6Addr, prefix: u8 },
+}
+
+impl fmt::Display for InvalidPrefix {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use InvalidPrefix::*;
+        match self {
+            V4 { addr, prefix } => write!(f, "{} is too large for {}", prefix, addr),
+            V6 { addr, prefix } => write!(f, "{} is too large for {}", prefix, addr),
+        }
+    }
+}
+
+impl de::Expected for InvalidPrefix {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use InvalidPrefix::*;
+        match self {
+            V4 { addr, prefix } => write!(f, "less than or equals to 32: {}/{}", addr, prefix),
+            V6 { addr, prefix } => write!(f, "less than or equals to 128: {}/{}", addr, prefix),
+        }
+    }
+}
+
+impl InvalidPrefix {
+    fn v4(addr: Ipv4Addr, prefix: u8) -> Self {
+        InvalidPrefix::V4 { addr, prefix }
+    }
+    fn v6(addr: Ipv6Addr, prefix: u8) -> Self {
+        InvalidPrefix::V6 { addr, prefix }
+    }
+}
+
+impl AddressPattern {
+    pub fn addr(addr: IpAddr, prefix: u8) -> Result<Self, InvalidPrefix> {
+        match addr {
+            IpAddr::V4(addr) => {
+                if prefix <= 32 {
+                    Ok(AddressPattern::IpAddr {
+                        addr: addr.into(),
+                        prefix,
+                    })
+                } else {
+                    Err(InvalidPrefix::v4(addr, prefix))
+                }
+            }
+            IpAddr::V6(addr) => {
+                if prefix <= 128 {
+                    Ok(AddressPattern::IpAddr {
+                        addr: addr.into(),
+                        prefix,
+                    })
+                } else {
+                    Err(InvalidPrefix::v6(addr, prefix))
+                }
+            }
+        }
+    }
 }
 
 impl From<Regex> for AddressPattern {
@@ -275,24 +338,22 @@ impl Matcher for AddressPattern {
             (
                 P::IpAddr {
                     addr: IpAddr::V4(addrp),
-                    mask,
+                    prefix,
                 },
                 Address::IpAddr(IpAddr::V4(addr), _),
             ) => {
-                let bmask = !0u32 << mask;
-                u32::from_be_bytes(addrp.octets()) & bmask
-                    == u32::from_be_bytes(addr.octets()) & bmask
+                let bmask = !0u32 << (32 - prefix);
+                u32::from(*addrp) & bmask == u32::from(*addr) & bmask
             }
             (
                 P::IpAddr {
                     addr: IpAddr::V6(addrp),
-                    mask,
+                    prefix,
                 },
                 Address::IpAddr(IpAddr::V6(addr), _),
             ) => {
-                let bmask = !0u128 << mask;
-                u128::from_be_bytes(addrp.octets()) & bmask
-                    == u128::from_be_bytes(addr.octets()) & bmask
+                let bmask = !0u128 << (128 - prefix);
+                u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
             (P::Domain { pattern }, Address::Domain(domain, _)) => pattern.is_match(domain),
             _ => false,
@@ -427,7 +488,7 @@ impl ConnectRuleEntry {
 /// rule.allow(
 ///     Specif(Pat::IpAddr {
 ///         addr: "192.168.0.1".parse()?,
-///         mask: 16,
+///         prefix: 16,
 ///     }),
 ///     Specif(80),
 ///     Any,
@@ -446,6 +507,71 @@ pub struct ConnectRule {
 
 mod format {
     use super::*;
+    use de::Unexpected;
+
+    // dummy type for acquires derived deserializer
+    #[derive(Debug, Clone, Deserialize)]
+    enum AddressPatternDef {
+        IpAddr {
+            addr: IpAddr,
+            prefix: u8,
+        },
+        Domain {
+            #[serde(with = "serde_regex")]
+            pattern: Regex,
+        },
+    }
+
+    impl<'de> Deserialize<'de> for AddressPattern {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            // impl Deserialize for AddressPattern using the Deserialize for AddressPatternDef
+            use AddressPatternDef::*;
+            match AddressPatternDef::deserialize(deserializer)? {
+                IpAddr { addr, prefix } => AddressPattern::addr(addr, prefix).map_err(|err| {
+                    de::Error::invalid_value(Unexpected::Unsigned(prefix as u64), &err)
+                }),
+                Domain { pattern } => Ok(AddressPattern::Domain { pattern }),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn deserialize_addr_pat() {
+            let ipv4 = r#"
+IpAddr:
+  addr: 192.168.0.1
+  prefix: 24
+"#;
+            assert!(
+                match serde_yaml::from_str::<AddressPattern>(&ipv4).unwrap() {
+                    AddressPattern::IpAddr {
+                        addr: IpAddr::V4(addr),
+                        prefix,
+                    } =>
+                        u32::from(addr) == u32::from(Ipv4Addr::new(192, 168, 0, 1)) && prefix == 24,
+                    _ => false,
+                }
+            );
+        }
+
+        #[test]
+        fn deserialize_addr_large_prefix() {
+            let ipv4_invalid = r#"
+IpAddr:
+  addr: 192.168.0.1
+  prefix: 33
+"#;
+            let res = serde_yaml::from_str::<AddressPattern>(&ipv4_invalid).unwrap_err();
+            println!("invalid: {}", res);
+        }
+    }
 
     impl Serialize for ConnectRule {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -635,28 +761,44 @@ mod test {
         use RulePattern::*;
         let mut rule = ConnectRule::none();
         rule.allow(
-            Specif(Pat::IpAddr {
-                addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
-            }),
+            Specif(Pat::addr("192.168.0.1".parse().unwrap(), 24).unwrap()),
             Specif(80),
             Any,
         );
         rule.allow(
-            Specif(Pat::IpAddr {
-                addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
-            }),
+            Specif(Pat::addr("192.168.0.1".parse().unwrap(), 24).unwrap()),
             Specif(443),
             Any,
         );
         assert!(!rule.check("0.0.0.0:80".parse().unwrap(), Tcp));
-        assert!(rule.check("192.168.0.0:80".parse().unwrap(), Tcp));
-        assert!(rule.check("192.168.255.255:443".parse().unwrap(), Udp));
-        assert!(!rule.check("192.167.255.255:443".parse().unwrap(), Tcp));
-        assert!(rule.check("192.168.255.255:80".parse().unwrap(), Tcp));
+        assert!(rule.check("192.168.0.0:80".parse().unwrap(), Tcp),);
+        assert!(rule.check("192.168.0.0:443".parse().unwrap(), Tcp),);
+        assert!(!rule.check("192.168.1.2:443".parse().unwrap(), Udp));
+        assert!(!rule.check("192.167.0.3:443".parse().unwrap(), Tcp));
+        assert!(rule.check("192.168.0.255:80".parse().unwrap(), Tcp),);
+        assert!(rule.check("192.168.0.42:80".parse().unwrap(), Tcp),);
         assert!(!rule.check(Domain("example.com".to_owned(), 443), Tcp));
         assert!(!rule.check(Domain("actcast.io".to_owned(), 60000), Udp));
+    }
+
+    #[test]
+    fn ipv6_pattern() {
+        use AddressPattern as Pat;
+        use RulePattern::*;
+        let mut rule = ConnectRule::none();
+        rule.allow(
+            Specif(Pat::addr("ff01::0".parse().unwrap(), 32).unwrap()),
+            Any,
+            Any,
+        );
+        assert!(rule.check(
+            SocketAddrV6::new(Ipv6Addr::new(0xff01, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
+            Tcp
+        ));
+        assert!(!rule.check(
+            SocketAddrV6::new(Ipv6Addr::new(0xffff, 0, 0, 0, 0, 0, 0, 0x1), 80, 0, 0).into(),
+            Tcp
+        ));
     }
 
     #[test]
@@ -665,18 +807,12 @@ mod test {
         use RulePattern::*;
         let mut rule = ConnectRule::none();
         rule.allow(
-            Specif(Pat::IpAddr {
-                addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
-            }),
+            Specif(Pat::addr("192.168.0.1".parse().unwrap(), 16).unwrap()),
             Specif(80),
             Any,
         );
         rule.allow(
-            Specif(Pat::IpAddr {
-                addr: "192.168.0.1".parse().unwrap(),
-                mask: 16,
-            }),
+            Specif(Pat::addr("192.168.0.1".parse().unwrap(), 16).unwrap()),
             Specif(443),
             Any,
         );
