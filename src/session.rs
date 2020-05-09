@@ -276,7 +276,10 @@ mod test {
         println!("session: {:?}", session);
         let src = BufferStream::with_buffer(vec![5, 1, 0].into(), vec![].into());
         assert_eq!(
-            session.make_session(src).unwrap_err().kind(),
+            session
+                .make_session("192.168.0.2:12345".parse().unwrap(), src)
+                .unwrap_err()
+                .kind(),
             &ErrorKind::NoAcceptableMethod
         );
     }
@@ -307,7 +310,10 @@ mod test {
         };
         let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
-            session.make_session(src).unwrap_err().kind(),
+            session
+                .make_session("192.168.1.1:34567".parse().unwrap(), src)
+                .unwrap_err()
+                .kind(),
             &ErrorKind::command_not_supported(Command::UdpAssociate)
         );
     }
@@ -345,7 +351,10 @@ mod test {
         };
         let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
-            session.make_session(src).unwrap_err().kind(),
+            session
+                .make_session("192.168.1.1:34567".parse().unwrap(), src)
+                .unwrap_err()
+                .kind(),
             &ErrorKind::connection_not_allowed(connect_to, L4Protocol::Tcp)
         );
     }
@@ -386,7 +395,10 @@ mod test {
         };
         let src = BufferStream::with_buffer(buff.into(), vec![].into());
         assert_eq!(
-            session.make_session(src).unwrap_err().kind(),
+            session
+                .make_session("192.168.1.1:34567".parse().unwrap(), src)
+                .unwrap_err()
+                .kind(),
             &ErrorKind::connection_refused(connect_to, L4Protocol::Tcp)
         );
     }
@@ -450,7 +462,9 @@ mod test {
         };
         let dst_connector = session.dst_connector.clone();
         // start relay
-        let relay = session.make_session(src.clone()).unwrap();
+        let relay = session
+            .make_session("192.168.1.2:33333".parse().unwrap(), src.clone())
+            .unwrap();
         assert!(relay.join().is_ok());
 
         // check for replied command from Session to client

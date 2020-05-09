@@ -99,7 +99,14 @@ pub mod test {
         fn connect_byte_stream(&self, addr: Address) -> Result<(Self::B, SocketAddr), Error> {
             println!("connect_byte_stream: {:?}", &addr);
             match &self.strms[&addr] {
-                Ok(strm) => Ok(strm.clone()),
+                Ok(strm) => {
+                    use Address::*;
+                    let peer = match addr {
+                        IpAddr(peer, port) => SocketAddr::new(peer, port),
+                        Domain(_, port) => format!("192.168.1.1:{}", port).parse().unwrap(),
+                    };
+                    Ok((strm.clone(), peer))
+                }
                 Err(err) => {
                     use Address::*;
                     use ConnectError::*;

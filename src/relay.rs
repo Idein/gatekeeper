@@ -167,12 +167,14 @@ mod tests {
         use crate::session::SessionId;
 
         let client_writer = Arc::new(Mutex::new(io::Cursor::new(vec![])));
+        let client_addr = "192.168.1.1:45678".parse().unwrap();
         let dummy_client_conn = Box::new(IterBuffer {
             iter: vec![b"hello".to_vec(), b" ".to_vec(), b"client".to_vec()].into_iter(),
             wr_buff: client_writer.clone(),
         }) as Box<dyn ByteStream>;
 
         let server_writer = Arc::new(Mutex::new(io::Cursor::new(vec![])));
+        let server_addr = "192.168.1.1:45679".parse().unwrap();
         let dummy_server_conn = IterBuffer {
             iter: vec![b"hello".to_vec(), b" ".to_vec(), b"server".to_vec()].into_iter(),
             wr_buff: server_writer.clone(),
@@ -184,7 +186,15 @@ mod tests {
 
         let handle = {
             let rx_relay = Arc::new(Mutex::new(rx_relay));
-            spawn_relay(dummy_client_conn, dummy_server_conn, rx_relay, guard).unwrap()
+            spawn_relay(
+                client_addr,
+                server_addr,
+                dummy_client_conn,
+                dummy_server_conn,
+                rx_relay,
+                guard,
+            )
+            .unwrap()
         };
 
         assert!(
