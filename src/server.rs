@@ -210,17 +210,14 @@ where
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
-                    trace!("stopping accept thread...");
                     self.tx_acceptor_done.send(()).ok();
-                    trace!("stopping session threads...");
                     self.session.iter().for_each(|(_, ss)| ss.stop());
 
                     self.session.drain().for_each(|(_, ss)| {
                         ss.join().ok();
                     });
-                    trace!("session threads are stopped");
+                    debug!("join accept thread");
                     accept_th.join().ok();
-                    trace!("accept thread is stopped");
                     break;
                 }
                 Connect(stream, addr) => {
@@ -250,7 +247,7 @@ where
                             Err(err) => error!("session panic: {}: {:?}", id, err),
                         }
                     } else {
-                        error!("session already be stopped: {}", id);
+                        error!("session has already been stopped: {}", id);
                     }
                 }
             }

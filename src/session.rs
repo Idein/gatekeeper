@@ -55,15 +55,17 @@ impl SessionHandle {
     }
 
     pub fn stop(&self) {
+        trace!("stop session: {}", self.addr);
         // ignore disconnected error. if the receiver is deallocated,
         // relay threads should have been terminated.
         if self.tx.send(()).is_ok() {
-            // send message to in- and out- relays
+            // send a message to another side relay
             self.tx.send(()).ok();
         }
     }
 
     pub fn join(self) -> thread::Result<Result<(), Error>> {
+        trace!("join session: {}", self.addr);
         match self.handle.join()? {
             Ok(relay) => relay.join(),
             Err(err) => Ok(Err(err)),
@@ -234,7 +236,7 @@ impl<S> DisconnectGuard<S> {
 
 impl<S> Drop for DisconnectGuard<S> {
     fn drop(&mut self) {
-        debug!("DisconnectGuard: {}", self.id);
+        trace!("DisconnectGuard: {}", self.id);
         self.tx.send(ServerCommand::Disconnect(self.id)).unwrap()
     }
 }
