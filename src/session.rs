@@ -128,7 +128,11 @@ where
         }
     }
 
-    fn make_session<'a>(&self, mut src_conn: impl ByteStream + 'a) -> Result<RelayHandle, Error> {
+    fn make_session<'a>(
+        &self,
+        src_addr: SocketAddr,
+        mut src_conn: impl ByteStream + 'a,
+    ) -> Result<RelayHandle, Error> {
         let mut socks = ReadWriteStream::new(&mut src_conn);
 
         let select = negotiate_auth_method(self.version, &self.authorizer, &mut socks)?;
@@ -138,16 +142,16 @@ where
         let req = socks.recv_connect_request()?;
         debug!("connect request: {:?}", req);
 
-        let conn = match perform_command(
+        let (conn, dst_addr) = match perform_command(
             req.command,
             &self.dst_connector,
             &self.conn_rule,
             req.connect_to.clone(),
         ) {
-            Ok(conn) => {
-                info!("connected: {}", req.connect_to);
+            Ok((conn, dst_addr)) => {
+                info!("connected: {}: {}", req.connect_to, dst_addr);
                 socks.send_connect_reply(self.connect_reply(Ok(())))?;
-                conn
+                (conn, dst_addr)
             }
             Err(err) => {
                 error!("command error: {}", err);
@@ -159,6 +163,8 @@ where
         };
 
         relay::spawn_relay(
+            src_addr,
+            dst_addr,
             socks.into_inner(),
             conn,
             self.rx.clone(),
@@ -168,10 +174,10 @@ where
 
     pub fn start<'a>(
         self,
-        _addr: SocketAddr,
+        src_addr: SocketAddr,
         src_conn: impl ByteStream + 'a,
     ) -> Result<RelayHandle, Error> {
-        self.make_session(src_conn)
+        self.make_session(src_addr, src_conn)
     }
 }
 
@@ -180,7 +186,7 @@ fn perform_command(
     connector: impl Deref<Target = impl Connector>,
     rule: &ConnectRule,
     connect_to: Address,
-) -> Result<impl ByteStream, Error> {
+) -> Result<(impl ByteStream, SocketAddr), Error> {
     match cmd {
         Command::Connect => {}
         cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
@@ -236,7 +242,7 @@ impl<S> DisconnectGuard<S> {
 
 impl<S> Drop for DisconnectGuard<S> {
     fn drop(&mut self) {
-        trace!("DisconnectGuard: {}", self.id);
+        debug!("DisconnectGuard: {}", self.id);
         self.tx.send(ServerCommand::Disconnect(self.id)).unwrap()
     }
 }

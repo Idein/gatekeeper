@@ -236,7 +236,6 @@ where
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
                         let addr = session.client_addr();
-                        info!("stop session: {}: {}", addr, id);
                         session.stop();
                         match session.join() {
                             Ok(Ok(())) => info!("session is stopped: {}: {}", addr, id),
