@@ -120,9 +120,18 @@ where
 }
 
 /// spawn a thread perform `Session.start`
+///
+///
+/// - *session*
+///   Session to spawn.
+/// - *tx*
+///   Sender of session termination message.
+/// - *addr*
+///   Address of the client connects to this server.
+/// - *strm*
+///   Established connection between a client and this server.
 fn spawn_session<S, D, M>(
     session: Session<D, M, S>,
-    // termination message sender
     tx: SyncSender<()>,
     addr: SocketAddr,
     strm: S,
@@ -132,7 +141,7 @@ where
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    SessionHandle::new(thread::spawn(move || session.start(addr, strm)), tx)
+    SessionHandle::new(addr, thread::spawn(move || session.start(addr, strm)), tx)
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
@@ -229,7 +238,11 @@ where
                 }
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
-                        debug!("stopping session: {}", id);
+                        debug!(
+                            "stopping session connected to {}: {}",
+                            session.client_addr(),
+                            id
+                        );
                         session.stop();
                         match session.join() {
                             Ok(Ok(())) => info!("session is stopped: {}", id),

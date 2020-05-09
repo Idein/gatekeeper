@@ -33,13 +33,25 @@ impl fmt::Display for SessionId {
 
 #[derive(Debug)]
 pub struct SessionHandle {
+    /// client address
+    addr: SocketAddr,
+    /// thread performs relay bytes
     handle: thread::JoinHandle<Result<RelayHandle, Error>>,
+    /// Sender to send termination messages to relay threads
     tx: SyncSender<()>,
 }
 
 impl SessionHandle {
-    pub fn new(handle: thread::JoinHandle<Result<RelayHandle, Error>>, tx: SyncSender<()>) -> Self {
-        Self { handle, tx }
+    pub fn new(
+        addr: SocketAddr,
+        handle: thread::JoinHandle<Result<RelayHandle, Error>>,
+        tx: SyncSender<()>,
+    ) -> Self {
+        Self { addr, handle, tx }
+    }
+
+    pub fn client_addr(&self) -> SocketAddr {
+        self.addr.clone()
     }
 
     pub fn stop(&self) {
