@@ -235,16 +235,13 @@ where
                 }
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
-                        debug!(
-                            "stopping session connected to {}: {}",
-                            session.client_addr(),
-                            id
-                        );
+                        let addr = session.client_addr();
+                        info!("stop session: {}: {}", addr, id);
                         session.stop();
                         match session.join() {
-                            Ok(Ok(())) => info!("session is stopped: {}", id),
-                            Ok(Err(err)) => error!("session error: {}: {}", id, err),
-                            Err(err) => error!("session panic: {}: {:?}", id, err),
+                            Ok(Ok(())) => info!("session is stopped: {}: {}", addr, id),
+                            Ok(Err(err)) => error!("session error: {}: {}: {}", addr, id, err),
+                            Err(err) => error!("session panic: {}: {}: {:?}", addr, id, err),
                         }
                     } else {
                         error!("session has already been stopped: {}", id);
