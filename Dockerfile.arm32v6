@@ -1,6 +1,8 @@
 # hadolint ignore=DL3007
 FROM balenalib/rpi-raspbian:latest AS builder
 
+ENV HOME /root/
+
 WORKDIR /gatekeeper
 
 COPY src            src
@@ -8,18 +10,15 @@ COPY rust-toolchain .
 COPY Cargo.toml     .
 COPY Cargo.lock     .
 
-# https://raw.githubusercontent.com/Idein/gatekeeper/master/rust-toolchain
-ENV RUST_VERSION "1.40.0"
+RUN update-ca-certificates -f && \
+    curl -sSfL https://sh.rustup.rs > rustup.sh && \
+    sh rustup.sh -y \
+      --default-toolchain "$(cat rust-toolchain)-arm-unknown-linux-gnueabihf" \
+      --profile minimal \
+      --target arm-unknown-linux-gnueabihf && \
+    rm -f rustup.sh
 
-ENV RUST_SOURCE_BASENAME "rust-${RUST_VERSION}-arm-unknown-linux-gnueabihf"
-ENV RUST_SOURCE_ARCHIVE_NAME "${RUST_SOURCE_BASENAME}.tar.gz"
-ENV RUST_SOURCE_URL "https://static.rust-lang.org/dist/${RUST_SOURCE_ARCHIVE_NAME}"
-
-RUN curl --insecure -O ${RUST_SOURCE_URL} && \
-    tar xvzf ${RUST_SOURCE_ARCHIVE_NAME} && \
-    rm -f ${RUST_SOURCE_ARCHIVE_NAME} && \
-    ./${RUST_SOURCE_BASENAME}/install.sh && \
-    rm -rf ${RUST_SOURCE_BASENAME}
+ENV PATH $HOME/.cargo/bin:$PATH
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential=* && \
