@@ -45,10 +45,6 @@ EXPOSE 1080
 
 ENV RUST_LOG gatekeeper=info
 
-RUN printf '#!/bin/bash\n\
-/etc/init.d/dbus start\n\
-/etc/init.d/avahi-daemon start\n\
-/gatekeeperd $*\n\
-' > /entrypoint.sh && chmod +x /entrypoint.sh
+COPY entrypoint.sh /
 
 ENTRYPOINT ["/entrypoint.sh"]
