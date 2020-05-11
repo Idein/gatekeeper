@@ -1,31 +1,54 @@
-FROM rust:1.40.0-slim-stretch AS builder
+# hadolint ignore=DL3007
+FROM balenalib/rpi-raspbian:latest AS builder
 
 WORKDIR /gatekeeper
 
 COPY src            src
-COPY .cargo         .cargo
 COPY rust-toolchain .
 COPY Cargo.toml     .
 COPY Cargo.lock     .
 
-ENV CC_arm_unknown_linux_musleabihf arm-linux-gnueabihf-gcc
-ENV RUSTFLAGS "-Clinker=arm-linux-gnueabihf-gcc"
+# https://raw.githubusercontent.com/Idein/gatekeeper/master/rust-toolchain
+ENV RUST_VERSION "1.40.0"
 
-# hadolint ignore=DL3015
+ENV RUST_SOURCE_BASENAME "rust-${RUST_VERSION}-arm-unknown-linux-gnueabihf"
+ENV RUST_SOURCE_ARCHIVE_NAME "${RUST_SOURCE_BASENAME}.tar.gz"
+ENV RUST_SOURCE_URL "https://static.rust-lang.org/dist/${RUST_SOURCE_ARCHIVE_NAME}"
+
+RUN curl --insecure -O ${RUST_SOURCE_URL} && \
+    tar xvzf ${RUST_SOURCE_ARCHIVE_NAME} && \
+    rm -f ${RUST_SOURCE_ARCHIVE_NAME} && \
+    ./${RUST_SOURCE_BASENAME}/install.sh && \
+    rm -rf ${RUST_SOURCE_BASENAME}
+
 RUN apt-get update && \
-    apt-get install -y --install-recommends gcc-arm-linux-gnueabihf=* && \
+    apt-get install -y --no-install-recommends build-essential=* && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    rustup target add arm-unknown-linux-musleabihf && \
-    cargo build --target=arm-unknown-linux-musleabihf --release && \
-    cp target/arm-unknown-linux-musleabihf/release/gatekeeperd /
+    rm -rf /var/lib/apt/lists/*
 
-FROM scratch
+ENV RUSTFLAGS "-Clinker=arm-linux-gnueabihf-gcc -Ccodegen_units=1"
+
+RUN cargo build --release && \
+    cp target/release/gatekeeperd /
+
+# hadolint ignore=DL3007
+FROM balenalib/rpi-raspbian:latest AS runner
 
 COPY --from=builder /gatekeeperd /
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends avahi-daemon=* dbus=* libnss-mdns=* && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 EXPOSE 1080
 
 ENV RUST_LOG gatekeeper=info
 
-ENTRYPOINT ["/gatekeeperd"]
+RUN printf '#!/bin/bash\n\
+/etc/init.d/dbus start\n\
+/etc/init.d/avahi-daemon start\n\
+/gatekeeperd $*\n\
+' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
