@@ -9,6 +9,7 @@ COPY Cargo.toml     .
 COPY Cargo.lock     .
 
 ENV CC_armv7_unknown_linux_musleabihf arm-linux-gnueabihf-gcc
+ENV RUSTFLAGS "-Clinker=arm-linux-gnueabihf-gcc"
 
 # hadolint ignore=DL3015
 RUN apt-get update && \
