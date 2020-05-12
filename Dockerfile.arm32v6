@@ -1,30 +1,49 @@
-FROM rust:1.40.0-slim-stretch AS builder
+# hadolint ignore=DL3007
+FROM balenalib/rpi-raspbian:latest AS builder
+
+ENV HOME /root/
 
 WORKDIR /gatekeeper
 
 COPY src            src
-COPY .cargo         .cargo
 COPY rust-toolchain .
 COPY Cargo.toml     .
 COPY Cargo.lock     .
 
-ENV CC_arm_unknown_linux_musleabihf arm-linux-gnueabihf-gcc
+RUN update-ca-certificates -f && \
+    curl -sSfL https://sh.rustup.rs > rustup.sh && \
+    sh rustup.sh -y \
+      --default-toolchain "$(cat rust-toolchain)-arm-unknown-linux-gnueabihf" \
+      --profile minimal \
+      --target arm-unknown-linux-gnueabihf && \
+    rm -f rustup.sh
 
-# hadolint ignore=DL3015
+ENV PATH $HOME/.cargo/bin:$PATH
+
 RUN apt-get update && \
-    apt-get install -y --install-recommends gcc-arm-linux-gnueabihf=* && \
+    apt-get install -y --no-install-recommends build-essential=* && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    rustup target add arm-unknown-linux-musleabihf && \
-    cargo build --target=arm-unknown-linux-musleabihf --release && \
-    cp target/arm-unknown-linux-musleabihf/release/gatekeeperd /
+    rm -rf /var/lib/apt/lists/*
 
-FROM scratch
+ENV RUSTFLAGS "-Clinker=arm-linux-gnueabihf-gcc"
+
+RUN cargo build --release && \
+    cp target/release/gatekeeperd /
+
+# hadolint ignore=DL3007
+FROM balenalib/rpi-raspbian:latest AS runner
 
 COPY --from=builder /gatekeeperd /
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends avahi-daemon=* dbus=* libnss-mdns=* && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 EXPOSE 1080
 
 ENV RUST_LOG gatekeeper=info
 
-ENTRYPOINT ["/gatekeeperd"]
+COPY entrypoint.sh /
+
+ENTRYPOINT ["/entrypoint.sh"]

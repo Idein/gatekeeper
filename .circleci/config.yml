@@ -172,7 +172,7 @@ workflows:
       - deploy-latest:
           matrix:
             parameters:
-              target: ["x86_64", "arm32v6", "arm32v7"]
+              target: ["x86_64"]
           filters:
             branches:
               only: master
@@ -182,7 +182,7 @@ workflows:
       - deploy-tags:
           matrix:
             parameters:
-              target: ["x86_64", "arm32v6", "arm32v7"]
+              target: ["x86_64"]
           filters:
             tags:
               only: /^v.*/

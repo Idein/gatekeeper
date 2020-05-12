@@ -1,7 +1,6 @@
 FROM ekidd/rust-musl-builder:1.40.0 AS builder
 
 COPY src            src
-COPY .cargo         .cargo
 COPY rust-toolchain .
 COPY Cargo.toml     .
 COPY Cargo.lock     .
