@@ -1,4 +1,5 @@
 use std::io;
+use std::net::SocketAddr;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -10,6 +11,10 @@ use crate::session::DisconnectGuard;
 
 #[derive(Debug)]
 pub struct RelayHandle {
+    /// client address
+    client_addr: SocketAddr,
+    /// server address
+    server_addr: SocketAddr,
     /// handle to relay: client -> external network
     outbound_th: JoinHandle<Result<(), Error>>,
     /// handle to relay: client <- external network
@@ -18,10 +23,14 @@ pub struct RelayHandle {
 
 impl RelayHandle {
     fn new(
+        client_addr: SocketAddr,
+        server_addr: SocketAddr,
         outbound_th: JoinHandle<Result<(), Error>>,
         incoming_th: JoinHandle<Result<(), Error>>,
     ) -> Self {
         Self {
+            client_addr,
+            server_addr,
             outbound_th,
             incoming_th,
         }
@@ -34,6 +43,10 @@ impl RelayHandle {
 
 /// Spawn relay thread(s)
 ///
+/// * `client_addr`
+///    The address of the client of this session.
+/// * `server_addr`
+///    The address of the server to connect to.
 /// * `client_conn`
 ///    Connection between client and this proxy.
 /// * `server_conn`
@@ -44,6 +57,8 @@ impl RelayHandle {
 /// * `guard`
 ///    Send `Disconnect` to the main thread when the relay thread is completed.
 pub fn spawn_relay<S>(
+    client_addr: SocketAddr,
+    server_addr: SocketAddr,
     client_conn: BoxedStream,
     server_conn: impl ByteStream,
     rx: Arc<Mutex<mpsc::Receiver<()>>>,
@@ -60,37 +75,55 @@ where
         let rx = rx.clone();
         spawn_thread("outbound", move || {
             let _guard = guard;
-            spawn_relay_half(rx, read_client, write_server)
+            let client_addr = client_addr.clone();
+            let server_addr = server_addr.clone();
+            spawn_relay_half(rx, client_addr, server_addr, read_client, write_server)
         })?
     };
     let incoming_th = {
         spawn_thread("incoming", move || {
             let _guard = guard;
-            spawn_relay_half(rx, read_server, write_client)
+            let client_addr = client_addr.clone();
+            let server_addr = server_addr.clone();
+            spawn_relay_half(rx, client_addr, server_addr, read_server, write_client)
         })?
     };
-    Ok(RelayHandle::new(outbound_th, incoming_th))
+    Ok(RelayHandle::new(
+        client_addr,
+        server_addr,
+        outbound_th,
+        incoming_th,
+    ))
 }
 
 fn spawn_relay_half(
     rx: Arc<Mutex<mpsc::Receiver<()>>>,
+    src_addr: SocketAddr,
+    dst_addr: SocketAddr,
     mut src: impl io::Read + Send + 'static,
     mut dst: impl io::Write + Send + 'static,
 ) -> Result<(), Error> {
-    let thread_name = thread::current().name().unwrap_or("<anonymous>").to_owned();
-    info!("spawned relay: {}", thread_name);
+    // thread_name
+    let name = thread::current().name().unwrap_or("<anonymous>").to_owned();
+    info!("spawned relay: {}: {}: {}", name, src_addr, dst_addr);
     loop {
         use io::ErrorKind as K;
         if check_termination(&rx).expect("main thread must be alive") {
-            info!("relay thread is requested termination.");
+            info!(
+                "relay thread is requested termination: {}: {}",
+                src_addr, dst_addr
+            );
             return Ok(());
         }
         match io::copy(&mut src, &mut dst) {
             Ok(0) => {
-                info!("relay thread has been finished.");
+                info!(
+                    "relay thread has been finished: {}: {}: {}",
+                    name, src_addr, dst_addr
+                );
                 return Ok(());
             }
-            Ok(size) => trace!("{} copy: {} bytes", thread_name, size),
+            Ok(size) => trace!("{}: {} ==> {}: {} bytes", name, src_addr, dst_addr, size),
             Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {}
             Err(err) => Err(err)?,
         }
@@ -134,12 +167,14 @@ mod tests {
         use crate::session::SessionId;
 
         let client_writer = Arc::new(Mutex::new(io::Cursor::new(vec![])));
+        let client_addr = "192.168.1.1:45678".parse().unwrap();
         let dummy_client_conn = Box::new(IterBuffer {
             iter: vec![b"hello".to_vec(), b" ".to_vec(), b"client".to_vec()].into_iter(),
             wr_buff: client_writer.clone(),
         }) as Box<dyn ByteStream>;
 
         let server_writer = Arc::new(Mutex::new(io::Cursor::new(vec![])));
+        let server_addr = "192.168.1.1:45679".parse().unwrap();
         let dummy_server_conn = IterBuffer {
             iter: vec![b"hello".to_vec(), b" ".to_vec(), b"server".to_vec()].into_iter(),
             wr_buff: server_writer.clone(),
@@ -151,7 +186,15 @@ mod tests {
 
         let handle = {
             let rx_relay = Arc::new(Mutex::new(rx_relay));
-            spawn_relay(dummy_client_conn, dummy_server_conn, rx_relay, guard).unwrap()
+            spawn_relay(
+                client_addr,
+                server_addr,
+                dummy_client_conn,
+                dummy_server_conn,
+                rx_relay,
+                guard,
+            )
+            .unwrap()
         };
 
         assert!(

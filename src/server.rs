@@ -120,9 +120,18 @@ where
 }
 
 /// spawn a thread perform `Session.start`
+///
+///
+/// - *session*
+///   Session to spawn.
+/// - *tx*
+///   Sender of session termination message.
+/// - *addr*
+///   Address of the client connects to this server.
+/// - *strm*
+///   Established connection between a client and this server.
 fn spawn_session<S, D, M>(
     session: Session<D, M, S>,
-    // termination message sender
     tx: SyncSender<()>,
     addr: SocketAddr,
     strm: S,
@@ -132,7 +141,7 @@ where
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    SessionHandle::new(thread::spawn(move || session.start(addr, strm)), tx)
+    SessionHandle::new(addr, thread::spawn(move || session.start(addr, strm)), tx)
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
@@ -201,17 +210,14 @@ where
             info!("cmd: {:?}", cmd);
             match cmd {
                 Terminate => {
-                    trace!("stopping accept thread...");
                     self.tx_acceptor_done.send(()).ok();
-                    trace!("stopping session threads...");
                     self.session.iter().for_each(|(_, ss)| ss.stop());
 
                     self.session.drain().for_each(|(_, ss)| {
                         ss.join().ok();
                     });
-                    trace!("session threads are stopped");
+                    debug!("join accept thread");
                     accept_th.join().ok();
-                    trace!("accept thread is stopped");
                     break;
                 }
                 Connect(stream, addr) => {
@@ -229,15 +235,15 @@ where
                 }
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
-                        debug!("stopping session: {}", id);
+                        let addr = session.client_addr();
                         session.stop();
                         match session.join() {
-                            Ok(Ok(())) => info!("session is stopped: {}", id),
-                            Ok(Err(err)) => error!("session error: {}: {}", id, err),
-                            Err(err) => error!("session panic: {}: {:?}", id, err),
+                            Ok(Ok(())) => info!("session is stopped: {}: {}", addr, id),
+                            Ok(Err(err)) => error!("session error: {}: {}: {}", addr, id, err),
+                            Err(err) => error!("session panic: {}: {}: {:?}", addr, id, err),
                         }
                     } else {
-                        error!("session already be stopped: {}", id);
+                        error!("session has already been stopped: {}", id);
                     }
                 }
             }

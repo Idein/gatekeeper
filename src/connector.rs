@@ -1,5 +1,5 @@
 use std::io;
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
 use crate::byte_stream::ByteStream;
@@ -13,8 +13,8 @@ use failure::Fail;
 pub trait Connector: Send {
     type B: ByteStream;
     type P: PktStream;
-    fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error>;
-    fn connect_pkt_stream(&self, addr: Address) -> Result<Self::P, Error>;
+    fn connect_byte_stream(&self, addr: Address) -> Result<(Self::B, SocketAddr), Error>;
+    fn connect_pkt_stream(&self, addr: Address) -> Result<(Self::P, SocketAddr), Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -30,7 +30,7 @@ impl TcpUdpConnector {
 impl Connector for TcpUdpConnector {
     type B = TcpStream;
     type P = UdpPktStream;
-    fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
+    fn connect_byte_stream(&self, addr: Address) -> Result<(Self::B, SocketAddr), Error> {
         let strm = match &addr {
             Address::IpAddr(addr, port) => TcpStream::connect(SocketAddr::new(*addr, *port)),
             Address::Domain(host, port) => TcpStream::connect((host.as_str(), *port)),
@@ -39,9 +39,10 @@ impl Connector for TcpUdpConnector {
         strm.set_read_timeout(self.rw_timeout.clone())?;
         strm.set_write_timeout(self.rw_timeout.clone())?;
 
-        Ok(strm)
+        let peer = strm.peer_addr()?;
+        Ok((strm, peer))
     }
-    fn connect_pkt_stream(&self, _addr: Address) -> Result<Self::P, Error> {
+    fn connect_pkt_stream(&self, _addr: Address) -> Result<(Self::P, SocketAddr), Error> {
         unimplemented!("connect_pkt_stream")
         /*
         let sock_addr = self.resolve(addr)?;
@@ -95,10 +96,17 @@ pub mod test {
     {
         type B = S;
         type P = UdpPktStream;
-        fn connect_byte_stream(&self, addr: Address) -> Result<Self::B, Error> {
+        fn connect_byte_stream(&self, addr: Address) -> Result<(Self::B, SocketAddr), Error> {
             println!("connect_byte_stream: {:?}", &addr);
             match &self.strms[&addr] {
-                Ok(strm) => Ok(strm.clone()),
+                Ok(strm) => {
+                    use Address::*;
+                    let peer = match addr {
+                        IpAddr(peer, port) => SocketAddr::new(peer, port),
+                        Domain(_, port) => format!("192.168.1.1:{}", port).parse().unwrap(),
+                    };
+                    Ok((strm.clone(), peer))
+                }
                 Err(err) => {
                     use Address::*;
                     use ConnectError::*;
@@ -127,7 +135,7 @@ pub mod test {
                 }
             }
         }
-        fn connect_pkt_stream(&self, _addr: Address) -> Result<Self::P, Error> {
+        fn connect_pkt_stream(&self, _addr: Address) -> Result<(Self::P, SocketAddr), Error> {
             unimplemented!("BufferConnector::connect_pkt_stream")
         }
     }
