@@ -1,7 +1,7 @@
 # hadolint ignore=DL3007
 FROM balenalib/rpi-raspbian:latest AS builder
 
-ENV HOME /root/
+ENV HOME /root
 
 WORKDIR /gatekeeper
 
@@ -12,10 +12,7 @@ COPY Cargo.lock     .
 
 RUN update-ca-certificates -f && \
     curl -sSfL https://sh.rustup.rs > rustup.sh && \
-    sh rustup.sh -y \
-      --default-toolchain "$(cat rust-toolchain)-arm-unknown-linux-gnueabihf" \
-      --profile minimal \
-      --target arm-unknown-linux-gnueabihf && \
+    sh rustup.sh -y --default-toolchain none --profile minimal && \
     rm -f rustup.sh
 
 ENV PATH $HOME/.cargo/bin:$PATH
@@ -27,8 +24,11 @@ RUN apt-get update && \
 
 ENV RUSTFLAGS "-Clinker=arm-linux-gnueabihf-gcc"
 
-RUN cargo build --release && \
-    cp target/release/gatekeeperd /
+ARG TARGET=arm-unknown-linux-gnueabihf
+
+RUN rustup target add "$TARGET" && \
+    cargo build --target "$TARGET" --release && \
+    cp "target/$TARGET/release/gatekeeperd" /
 
 # hadolint ignore=DL3007
 FROM balenalib/rpi-raspbian:latest AS runner
