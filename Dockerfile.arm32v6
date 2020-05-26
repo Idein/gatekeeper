@@ -1,18 +1,18 @@
-# hadolint ignore=DL3007
-FROM balenalib/rpi-raspbian:latest AS builder
+FROM idein/actcast-rpi-app-base:buster AS builder
+
+ENV DEBIAN_FRONTEND noninteractive
 
 RUN sed -i'' -e 's%http://[^ ]\+%http://mirrordirector.raspbian.org/raspbian%g' /etc/apt/sources.list
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential=* && \
+    apt-get install -y --no-install-recommends build-essential=* curl=* && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 ENV HOME /root
 ENV PATH $HOME/.cargo/bin:$PATH
 
-RUN update-ca-certificates -f && \
-    curl -sSfL https://sh.rustup.rs > rustup.sh && \
+RUN curl -sSfL https://sh.rustup.rs > rustup.sh && \
     sh rustup.sh -y --default-toolchain none --profile minimal && \
     rm -f rustup.sh
 
@@ -31,8 +31,7 @@ RUN rustup target add "$TARGET" && \
     cargo build --target "$TARGET" --release && \
     cp "target/$TARGET/release/gatekeeperd" /
 
-# hadolint ignore=DL3007
-FROM balenalib/rpi-raspbian:latest AS runner
+FROM idein/actcast-rpi-app-base:buster AS runner
 
 COPY --from=builder /gatekeeperd /
 
