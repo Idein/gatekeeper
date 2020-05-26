@@ -1,7 +1,18 @@
 # hadolint ignore=DL3007
 FROM balenalib/rpi-raspbian:latest AS builder
 
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential=* && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV HOME /root
+ENV PATH $HOME/.cargo/bin:$PATH
+
+RUN update-ca-certificates -f && \
+    curl -sSfL https://sh.rustup.rs > rustup.sh && \
+    sh rustup.sh -y --default-toolchain none --profile minimal && \
+    rm -f rustup.sh
 
 WORKDIR /gatekeeper
 
@@ -9,18 +20,6 @@ COPY src            src
 COPY rust-toolchain .
 COPY Cargo.toml     .
 COPY Cargo.lock     .
-
-RUN update-ca-certificates -f && \
-    curl -sSfL https://sh.rustup.rs > rustup.sh && \
-    sh rustup.sh -y --default-toolchain none --profile minimal && \
-    rm -f rustup.sh
-
-ENV PATH $HOME/.cargo/bin:$PATH
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential=* && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
 
 ENV RUSTFLAGS "-Clinker=arm-linux-gnueabihf-gcc"
 
