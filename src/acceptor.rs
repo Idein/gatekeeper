@@ -124,8 +124,14 @@ impl Binder for TcpBinder {
             .reuse_address(true)?
             .bind(&addr)
             .map_err(|err| addr_error(err, addr))?;
+
+        // `backlog` parameter to `TcpBuilder::listen() is directly passed to `listen(2)` system call.
+        // If it is too small, clients may not `connect(2)` to the server.
+        // Here, `backlog` is intended to be as large as `net.core.somaxconn` kernel parameter,
+        let listener = tcp.listen(256)?;
+
         Ok(TcpAcceptor::new(
-            tcp.listen(0)?,
+            listener,
             self.rw_timeout,
             self.rx.clone(),
             self.accept_timeout,
