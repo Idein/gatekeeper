@@ -27,6 +27,16 @@
       Specif: 443
     protocol:
       Specif: Tcp
+# allow subdomains of rust-lang.org
+- Allow:
+    address:
+      Specif:
+        Domain:
+          wildcard: '*.rust-lang.org'
+    port:
+      Specif: 443
+    protocol:
+      Specif: Tcp
 # deny facebook.com
 - Deny:
     address:

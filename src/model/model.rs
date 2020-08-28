@@ -37,10 +37,13 @@ use std::str::FromStr;
 use derive_more::{Display, From, Into};
 use failure::Fail;
 use log::*;
-use regex::Regex;
+use regex::{escape, Regex};
 use serde::*;
 
 pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion(5);
+
+const WILDCARD_AFTER_ESCAPE: &'static str = r"\*";
+const WILDCARD_REPLACEMENT: &'static str = r"[a-zA-Z0-9-]{1,63}";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
 pub struct ProtocolVersion(u8);
@@ -260,6 +263,9 @@ pub enum AddressPattern {
         #[serde(default)]
         #[serde(skip_serializing_if = "Option::is_none")]
         pattern: Option<Regex>,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        wildcard: Option<String>,
     },
 }
 
@@ -327,7 +333,10 @@ impl AddressPattern {
 
 impl From<Regex> for AddressPattern {
     fn from(reg: Regex) -> Self {
-        AddressPattern::Domain { pattern: Some(reg) }
+        AddressPattern::Domain {
+            pattern: Some(reg),
+            wildcard: None,
+        }
     }
 }
 
@@ -357,7 +366,28 @@ impl Matcher for AddressPattern {
                 let bmask = !0u128 << (128 - prefix);
                 u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
-            (P::Domain { pattern: Some(reg) }, Address::Domain(domain, _)) => reg.is_match(domain),
+            (
+                P::Domain {
+                    pattern: Some(reg),
+                    wildcard: None,
+                },
+                Address::Domain(domain, _),
+            ) => reg.is_match(domain),
+            (
+                P::Domain {
+                    pattern: None,
+                    wildcard: Some(s),
+                },
+                Address::Domain(domain, _),
+            ) => {
+                let pattern = format!(
+                    r"\A{}\z",
+                    &escape(s).replace(WILDCARD_AFTER_ESCAPE, WILDCARD_REPLACEMENT)
+                );
+                let reg = Regex::new(&pattern).unwrap();
+                reg.is_match(domain)
+            }
+
             _ => false,
         }
     }
@@ -523,6 +553,9 @@ mod format {
             #[serde(default)]
             #[serde(skip_serializing_if = "Option::is_none")]
             pattern: Option<Regex>,
+            #[serde(default)]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            wildcard: Option<String>,
         },
     }
 
@@ -537,10 +570,26 @@ mod format {
                 IpAddr { addr, prefix } => AddressPattern::addr(addr, prefix).map_err(|err| {
                     de::Error::invalid_value(Unexpected::Unsigned(prefix as u64), &err)
                 }),
-                Domain { pattern: Some(reg) } => Ok(AddressPattern::Domain { pattern: Some(reg) }),
-                Domain { pattern: _ } => {
-                    Err(de::Error::custom("pattern must be specified in Domain"))
-                }
+                Domain {
+                    pattern: Some(reg),
+                    wildcard: None,
+                } => Ok(AddressPattern::Domain {
+                    pattern: Some(reg),
+                    wildcard: None,
+                }),
+                Domain {
+                    pattern: None,
+                    wildcard: Some(s),
+                } => Ok(AddressPattern::Domain {
+                    pattern: None,
+                    wildcard: Some(s),
+                }),
+                Domain {
+                    pattern: _,
+                    wildcard: _,
+                } => Err(de::Error::custom(
+                    "either pattern or wildcard must be specified in Domain",
+                )),
             }
         }
     }
@@ -762,6 +811,70 @@ mod test {
     }
 
     #[test]
+    fn domain_wildcard() {
+        use Address::Domain;
+        use RulePattern::*;
+        struct Case {
+            wildcard: String,
+            valid_domains: Vec<String>,
+            invalid_domains: Vec<String>,
+        }
+        impl Case {
+            fn new(wildcard: &str, valid_domains: Vec<&str>, invalid_domains: Vec<&str>) -> Self {
+                Case {
+                    wildcard: wildcard.to_owned(),
+                    valid_domains: valid_domains.into_iter().map(|s| s.to_owned()).collect(),
+                    invalid_domains: invalid_domains.into_iter().map(|s| s.to_owned()).collect(),
+                }
+            }
+        }
+        let cases = vec![
+            Case::new(
+                "*.*.example.com",
+                vec!["b.a.example.com"],
+                vec!["example.com", "a.example.com", "c.b.a.example.com"],
+            ),
+            Case::new(
+                "fo*.b*r.*az.example.com",
+                vec!["foo.bar.baz.example.com"],
+                vec![
+                    "fuu.bar.baz.example.com",
+                    "foo.var.baz.example.com",
+                    "foo.bar.buz.example.com",
+                ],
+            ),
+            Case::new(
+                "*.execute-api.*-east-*.amazonaws.com",
+                vec![
+                    "foo.execute-api.us-east-1.amazonaws.com",
+                    "foo.execute-api.us-east-2.amazonaws.com",
+                ],
+                vec![
+                    "foo.execute-api.us-west-1.amazonaws.com",
+                    "foo.execute-api.ap-northeast-1.amazonaws.com",
+                ],
+            ),
+        ];
+        for case in cases {
+            let mut rule = ConnectRule::none();
+            rule.allow(
+                Specif(AddressPattern::Domain {
+                    pattern: None,
+                    wildcard: Some(case.wildcard),
+                }),
+                Specif(443),
+                Specif(Tcp),
+            );
+            for domain in case.valid_domains {
+                assert!(rule.check(Domain(domain, 443), Tcp))
+            }
+            for domain in case.invalid_domains {
+                assert!(!rule.check(Domain(domain, 443), Tcp))
+            }
+        }
+    }
+
+    #[test]
     fn address_pattern() {
         use Address::Domain;
         use AddressPattern as Pat;
@@ -825,6 +938,14 @@ mod test {
         );
         rule.allow(
             Specif(Regex::new(r"\A(.+\.)?actcast\.io\z").unwrap().into()),
+            Any,
+            Specif(L4Protocol::Tcp),
+        );
+        rule.allow(
+            Specif(AddressPattern::Domain {
+                pattern: None,
+                wildcard: Some("*.actcast.io".to_owned()),
+            }),
             Any,
             Specif(L4Protocol::Tcp),
         );
