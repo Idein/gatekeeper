@@ -257,7 +257,9 @@ pub enum AddressPattern {
     IpAddr { addr: IpAddr, prefix: u8 },
     Domain {
         #[serde(with = "serde_regex")]
-        pattern: Regex,
+        #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pattern: Option<Regex>,
     },
 }
 
@@ -325,7 +327,7 @@ impl AddressPattern {
 
 impl From<Regex> for AddressPattern {
     fn from(reg: Regex) -> Self {
-        AddressPattern::Domain { pattern: reg }
+        AddressPattern::Domain { pattern: Some(reg) }
     }
 }
 
@@ -355,7 +357,7 @@ impl Matcher for AddressPattern {
                 let bmask = !0u128 << (128 - prefix);
                 u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
-            (P::Domain { pattern }, Address::Domain(domain, _)) => pattern.is_match(domain),
+            (P::Domain { pattern: Some(reg) }, Address::Domain(domain, _)) => reg.is_match(domain),
             _ => false,
         }
     }
@@ -518,7 +520,9 @@ mod format {
         },
         Domain {
             #[serde(with = "serde_regex")]
-            pattern: Regex,
+            #[serde(default)]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pattern: Option<Regex>,
         },
     }
 
@@ -533,7 +537,10 @@ mod format {
                 IpAddr { addr, prefix } => AddressPattern::addr(addr, prefix).map_err(|err| {
                     de::Error::invalid_value(Unexpected::Unsigned(prefix as u64), &err)
                 }),
-                Domain { pattern } => Ok(AddressPattern::Domain { pattern }),
+                Domain { pattern: Some(reg) } => Ok(AddressPattern::Domain { pattern: Some(reg) }),
+                Domain { pattern: _ } => {
+                    Err(de::Error::custom("pattern must be specified in Domain"))
+                }
             }
         }
     }
