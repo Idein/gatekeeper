@@ -257,15 +257,22 @@ pub struct UdpDatagram<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub enum AddressPattern {
     /// e.g. 127.0.0.1/16
-    IpAddr { addr: IpAddr, prefix: u8 },
-    Domain {
+    IpAddr {
+        addr: IpAddr,
+        prefix: u8,
+    },
+    Domain(DomainPattern),
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum DomainPattern {
+    Regex {
         #[serde(with = "serde_regex")]
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pattern: Option<Regex>,
-        #[serde(default)]
-        #[serde(skip_serializing_if = "Option::is_none")]
-        wildcard: Option<String>,
+        pattern: Regex,
+    },
+    Wildcard {
+        wildcard: String,
     },
 }
 
@@ -333,10 +340,7 @@ impl AddressPattern {
 
 impl From<Regex> for AddressPattern {
     fn from(reg: Regex) -> Self {
-        AddressPattern::Domain {
-            pattern: Some(reg),
-            wildcard: None,
-        }
+        AddressPattern::Domain(DomainPattern::Regex { pattern: reg })
     }
 }
 
@@ -366,20 +370,10 @@ impl Matcher for AddressPattern {
                 let bmask = !0u128 << (128 - prefix);
                 u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
-            (
-                P::Domain {
-                    pattern: Some(reg),
-                    wildcard: None,
-                },
-                Address::Domain(domain, _),
-            ) => reg.is_match(domain),
-            (
-                P::Domain {
-                    pattern: None,
-                    wildcard: Some(s),
-                },
-                Address::Domain(domain, _),
-            ) => {
+            (P::Domain(DomainPattern::Regex { pattern: reg }), Address::Domain(domain, _)) => {
+                reg.is_match(domain)
+            }
+            (P::Domain(DomainPattern::Wildcard { wildcard: s }), Address::Domain(domain, _)) => {
                 let pattern = format!(
                     r"\A{}\z",
                     &escape(s).replace(WILDCARD_AFTER_ESCAPE, WILDCARD_REPLACEMENT)
@@ -544,18 +538,19 @@ mod format {
     // dummy type for acquires derived deserializer
     #[derive(Debug, Clone, Deserialize)]
     enum AddressPatternDef {
-        IpAddr {
-            addr: IpAddr,
-            prefix: u8,
-        },
-        Domain {
+        IpAddr { addr: IpAddr, prefix: u8 },
+        Domain(DomainPatternDef),
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(untagged)]
+    enum DomainPatternDef {
+        Regex {
             #[serde(with = "serde_regex")]
-            #[serde(default)]
-            #[serde(skip_serializing_if = "Option::is_none")]
-            pattern: Option<Regex>,
-            #[serde(default)]
-            #[serde(skip_serializing_if = "Option::is_none")]
-            wildcard: Option<String>,
+            pattern: Regex,
+        },
+        Wildcard {
+            wildcard: String,
         },
     }
 
@@ -570,26 +565,16 @@ mod format {
                 IpAddr { addr, prefix } => AddressPattern::addr(addr, prefix).map_err(|err| {
                     de::Error::invalid_value(Unexpected::Unsigned(prefix as u64), &err)
                 }),
-                Domain {
-                    pattern: Some(reg),
-                    wildcard: None,
-                } => Ok(AddressPattern::Domain {
-                    pattern: Some(reg),
-                    wildcard: None,
-                }),
-                Domain {
-                    pattern: None,
-                    wildcard: Some(s),
-                } => Ok(AddressPattern::Domain {
-                    pattern: None,
-                    wildcard: Some(s),
-                }),
-                Domain {
-                    pattern: _,
-                    wildcard: _,
-                } => Err(de::Error::custom(
-                    "either pattern or wildcard must be specified in Domain",
-                )),
+                Domain(DomainPatternDef::Regex { pattern: reg }) => {
+                    Ok(AddressPattern::Domain(DomainPattern::Regex {
+                        pattern: reg,
+                    }))
+                }
+                Domain(DomainPatternDef::Wildcard { wildcard: s }) => {
+                    Ok(AddressPattern::Domain(DomainPattern::Wildcard {
+                        wildcard: s,
+                    }))
+                }
             }
         }
     }
@@ -858,10 +843,9 @@ mod test {
         for case in cases {
             let mut rule = ConnectRule::none();
             rule.allow(
-                Specif(AddressPattern::Domain {
-                    pattern: None,
-                    wildcard: Some(case.wildcard),
-                }),
+                Specif(AddressPattern::Domain(DomainPattern::Wildcard {
+                    wildcard: case.wildcard,
+                })),
                 Specif(443),
                 Specif(Tcp),
             );
@@ -942,10 +926,9 @@ mod test {
             Specif(L4Protocol::Tcp),
         );
         rule.allow(
-            Specif(AddressPattern::Domain {
-                pattern: None,
-                wildcard: Some("*.actcast.io".to_owned()),
-            }),
+            Specif(AddressPattern::Domain(DomainPattern::Wildcard {
+                wildcard: "*.actcast.io".to_owned(),
+            })),
             Any,
             Specif(L4Protocol::Tcp),
         );
