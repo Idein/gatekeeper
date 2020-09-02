@@ -370,8 +370,8 @@ impl Matcher for AddressPattern {
                 let bmask = !0u128 << (128 - prefix);
                 u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
-            (P::Domain(DomainPattern::Regex { pattern: reg }), Address::Domain(domain, _)) => {
-                reg.is_match(domain)
+            (P::Domain(DomainPattern::Regex { pattern }), Address::Domain(domain, _)) => {
+                pattern.is_match(domain)
             }
             (P::Domain(DomainPattern::Wildcard { wildcard: s }), Address::Domain(domain, _)) => {
                 let pattern = format!(
@@ -565,10 +565,8 @@ mod format {
                 IpAddr { addr, prefix } => AddressPattern::addr(addr, prefix).map_err(|err| {
                     de::Error::invalid_value(Unexpected::Unsigned(prefix as u64), &err)
                 }),
-                Domain(DomainPatternDef::Regex { pattern: reg }) => {
-                    Ok(AddressPattern::Domain(DomainPattern::Regex {
-                        pattern: reg,
-                    }))
+                Domain(DomainPatternDef::Regex { pattern }) => {
+                    Ok(AddressPattern::Domain(DomainPattern::Regex { pattern }))
                 }
                 Domain(DomainPatternDef::Wildcard { wildcard: s }) => {
                     Ok(AddressPattern::Domain(DomainPattern::Wildcard {
