@@ -27,12 +27,12 @@
       Specif: 443
     protocol:
       Specif: Tcp
-# allow subdomains of rust-lang.org
+# allow any Amazon API Gateway's REST API
 - Allow:
     address:
       Specif:
         Domain:
-          wildcard: '*.rust-lang.org'
+          wildcard: '*.execute-api.*.amazonaws.com'
     port:
       Specif: 443
     protocol:
