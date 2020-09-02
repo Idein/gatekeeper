@@ -801,15 +801,15 @@ mod test {
         use RulePattern::*;
         struct Case {
             wildcard: String,
-            valid_domains: Vec<String>,
-            invalid_domains: Vec<String>,
+            match_domains: Vec<String>,
+            unmatch_domains: Vec<String>,
         }
         impl Case {
-            fn new(wildcard: &str, valid_domains: Vec<&str>, invalid_domains: Vec<&str>) -> Self {
+            fn new(wildcard: &str, match_domains: Vec<&str>, unmatch_domains: Vec<&str>) -> Self {
                 Case {
                     wildcard: wildcard.to_owned(),
-                    valid_domains: valid_domains.into_iter().map(|s| s.to_owned()).collect(),
-                    invalid_domains: invalid_domains.into_iter().map(|s| s.to_owned()).collect(),
+                    match_domains: match_domains.into_iter().map(|s| s.to_owned()).collect(),
+                    unmatch_domains: unmatch_domains.into_iter().map(|s| s.to_owned()).collect(),
                 }
             }
         }
@@ -849,10 +849,10 @@ mod test {
                 Specif(443),
                 Specif(Tcp),
             );
-            for domain in case.valid_domains {
+            for domain in case.match_domains {
                 assert!(rule.check(Domain(domain, 443), Tcp))
             }
-            for domain in case.invalid_domains {
+            for domain in case.unmatch_domains {
                 assert!(!rule.check(Domain(domain, 443), Tcp))
             }
         }
