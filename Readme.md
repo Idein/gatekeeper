@@ -20,7 +20,7 @@ Gatekeeper allow users to restricting connection based on:
 
 - target address
     - ip address (subnet range)
-    - domain name (regex matching)
+    - domain name (regex matching, wildcard)
 - port number
 - protocol (currently, tcp is only supported)
 
@@ -120,7 +120,8 @@ Value of these fields are either `Any` or `Specif`.
     address: Any
     ```
 
-  `address` is either `IpAddr` or `Domain`.
+  `address` is either `IpAddr` or `Domain`.  
+  `IpAddr` is specified with `addr` and `prefix`.
 
     ```yaml
     # 192.168.0.1/24
@@ -131,6 +132,8 @@ Value of these fields are either `Any` or `Specif`.
           prefix: 24
     ```
 
+  `Domain` is specified as either `pattern` or `wildcard`.
+
     ```yaml
     # {mail.,}google.{com,co.jp}
     address:
@@ -140,6 +143,14 @@ Value of these fields are either `Any` or `Specif`.
           pattern: '\A(mail\.)?google.((com|co)\.jp)\z'
     ```
 
+    ```yaml
+    # allow any Amazon API Gateway's REST API
+    address:
+      Specif:
+        Domain:
+          # converted to the regex pattern: \A[A-Za-z0-9-]{1,63}\.execute\-api\.[A-Za-z0-9-]{1,63}\.amazonaws\.com\z
+          wildcard: '*.execute-api.*.amazonaws.com'
+    ```
 
 - `port`
 
