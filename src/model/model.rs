@@ -373,10 +373,10 @@ impl Matcher for AddressPattern {
             (P::Domain(DomainPattern::Regex { pattern }), Address::Domain(domain, _)) => {
                 pattern.is_match(domain)
             }
-            (P::Domain(DomainPattern::Wildcard { wildcard: s }), Address::Domain(domain, _)) => {
+            (P::Domain(DomainPattern::Wildcard { wildcard }), Address::Domain(domain, _)) => {
                 let pattern = format!(
                     r"\A{}\z",
-                    &escape(s).replace(WILDCARD_AFTER_ESCAPE, WILDCARD_REPLACEMENT)
+                    &escape(wildcard).replace(WILDCARD_AFTER_ESCAPE, WILDCARD_REPLACEMENT)
                 );
                 let reg = Regex::new(&pattern).unwrap();
                 reg.is_match(domain)
@@ -568,10 +568,8 @@ mod format {
                 Domain(DomainPatternDef::Regex { pattern }) => {
                     Ok(AddressPattern::Domain(DomainPattern::Regex { pattern }))
                 }
-                Domain(DomainPatternDef::Wildcard { wildcard: s }) => {
-                    Ok(AddressPattern::Domain(DomainPattern::Wildcard {
-                        wildcard: s,
-                    }))
+                Domain(DomainPatternDef::Wildcard { wildcard }) => {
+                    Ok(AddressPattern::Domain(DomainPattern::Wildcard { wildcard }))
                 }
             }
         }
