@@ -43,7 +43,10 @@ use serde::*;
 pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion(5);
 
 const WILDCARD_AFTER_ESCAPE: &'static str = r"\*";
-const WILDCARD_REPLACEMENT: &'static str = r"[a-zA-Z0-9-]{1,63}";
+
+// Domain labels can include letter, digit and hyphen
+// See https://tools.ietf.org/html/rfc1035#section-2.3.1
+const AVAILABLE_STRINGS_FOR_DOMAIN_LABEL: &'static str = r"[A-Za-z0-9-]{1,63}";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
 pub struct ProtocolVersion(u8);
@@ -376,7 +379,8 @@ impl Matcher for AddressPattern {
             (P::Domain(DomainPattern::Wildcard { wildcard }), Address::Domain(domain, _)) => {
                 let pattern = format!(
                     r"\A{}\z",
-                    &escape(wildcard).replace(WILDCARD_AFTER_ESCAPE, WILDCARD_REPLACEMENT)
+                    &escape(wildcard)
+                        .replace(WILDCARD_AFTER_ESCAPE, AVAILABLE_STRINGS_FOR_DOMAIN_LABEL)
                 );
                 let reg = Regex::new(&pattern).unwrap();
                 reg.is_match(domain)
