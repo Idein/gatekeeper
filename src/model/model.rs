@@ -350,6 +350,7 @@ impl Matcher for AddressPattern {
 
     fn r#match(&self, addr: &Self::Item) -> bool {
         use AddressPattern as P;
+        use DomainPattern as DP;
         match (self, addr) {
             (
                 P::IpAddr {
@@ -371,10 +372,10 @@ impl Matcher for AddressPattern {
                 let bmask = !0u128 << (128 - prefix);
                 u128::from(*addrp) & bmask == u128::from(*addr) & bmask
             }
-            (P::Domain(DomainPattern::Regex { pattern }), Address::Domain(domain, _)) => {
+            (P::Domain(DP::Regex { pattern }), Address::Domain(domain, _)) => {
                 pattern.is_match(domain)
             }
-            (P::Domain(DomainPattern::Wildcard { wildcard }), Address::Domain(domain, _)) => {
+            (P::Domain(DP::Wildcard { wildcard }), Address::Domain(domain, _)) => {
                 let wildcard_after_escape = r"\*";
                 let pattern = format!(
                     r"\A{}\z",
