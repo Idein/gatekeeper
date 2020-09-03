@@ -925,7 +925,7 @@ mod test {
             Specif(L4Protocol::Tcp),
         );
         rule.allow(
-            Specif(AddressPattern::Domain(DomainPattern::Wildcard {
+            Specif(Pat::Domain(DomainPattern::Wildcard {
                 wildcard: "*.actcast.io".to_owned(),
             })),
             Any,
