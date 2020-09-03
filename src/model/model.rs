@@ -565,14 +565,15 @@ mod format {
         {
             // impl Deserialize for AddressPattern using the Deserialize for AddressPatternDef
             use AddressPatternDef::*;
+            use DomainPatternDef::*;
             match AddressPatternDef::deserialize(deserializer)? {
                 IpAddr { addr, prefix } => AddressPattern::addr(addr, prefix).map_err(|err| {
                     de::Error::invalid_value(Unexpected::Unsigned(prefix as u64), &err)
                 }),
-                Domain(DomainPatternDef::Regex { pattern }) => {
+                Domain(Regex { pattern }) => {
                     Ok(AddressPattern::Domain(DomainPattern::Regex { pattern }))
                 }
-                Domain(DomainPatternDef::Wildcard { wildcard }) => {
+                Domain(Wildcard { wildcard }) => {
                     Ok(AddressPattern::Domain(DomainPattern::Wildcard { wildcard }))
                 }
             }
