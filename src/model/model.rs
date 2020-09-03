@@ -376,11 +376,9 @@ impl Matcher for AddressPattern {
                 pattern.is_match(domain)
             }
             (P::Domain(DP::Wildcard { wildcard }), Address::Domain(domain, _)) => {
-                let wildcard_after_escape = r"\*";
                 let pattern = format!(
                     r"\A{}\z",
-                    &escape(wildcard)
-                        .replace(wildcard_after_escape, AVAILABLE_STRINGS_FOR_DOMAIN_LABEL)
+                    &escape(wildcard).replace(r"\*", AVAILABLE_STRINGS_FOR_DOMAIN_LABEL)
                 );
                 let reg = Regex::new(&pattern).unwrap();
                 reg.is_match(domain)
