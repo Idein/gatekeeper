@@ -83,8 +83,8 @@ fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<
             assert!(len as usize >= mem::size_of::<libc::sockaddr_in6>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in6) };
             Ok(SocketAddrV6::new(
-                addr.sin6_addr.s6_addr.into(),
-                addr.sin6_port,
+                u128::from_be_bytes(addr.sin6_addr.s6_addr).into(),
+                u16::from_be(addr.sin6_port),
                 addr.sin6_flowinfo,
                 addr.sin6_scope_id,
             )
