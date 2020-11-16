@@ -106,12 +106,12 @@ fn spawn_relay_half(
 ) -> Result<(), Error> {
     // thread_name
     let name = thread::current().name().unwrap_or("<anonymous>").to_owned();
-    info!("spawned relay: {}: {}: {}", name, src_addr, dst_addr);
+    info!("spawned relay: {}: {} ==> {}", name, src_addr, dst_addr);
     loop {
         use io::ErrorKind as K;
         if check_termination(&rx).expect("main thread must be alive") {
             info!(
-                "relay thread is requested termination: {}: {}",
+                "relay thread is requested termination: {} ==> {}",
                 src_addr, dst_addr
             );
             return Ok(());
@@ -119,7 +119,7 @@ fn spawn_relay_half(
         match io::copy(&mut src, &mut dst) {
             Ok(0) => {
                 info!(
-                    "relay thread has been finished: {}: {}: {}",
+                    "relay thread has been finished: {}: {} ==> {}",
                     name, src_addr, dst_addr
                 );
                 return Ok(());
