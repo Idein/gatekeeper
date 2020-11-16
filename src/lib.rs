@@ -106,6 +106,7 @@ pub mod server_command;
 mod session;
 mod tcp_listener_ext;
 mod test;
+mod thread;
 
 pub use config::*;
 pub use model::model::*;

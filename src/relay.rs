@@ -8,6 +8,7 @@ use log::*;
 use crate::byte_stream::{BoxedStream, ByteStream};
 use crate::model::{Error, ErrorKind};
 use crate::session::DisconnectGuard;
+use crate::thread::spawn_thread;
 
 #[derive(Debug)]
 pub struct RelayHandle {
@@ -142,18 +143,6 @@ fn check_termination(rx: &Arc<Mutex<mpsc::Receiver<()>>>) -> Result<bool, Error>
             Err(ErrorKind::disconnected(thread::current().name().unwrap_or("<anonymous>")).into())
         }
     }
-}
-
-/// spawn `name`d thread performs `f`
-fn spawn_thread<F, R>(name: &str, f: F) -> Result<JoinHandle<R>, Error>
-where
-    F: FnOnce() -> R + Send + 'static,
-    R: Send + 'static,
-{
-    thread::Builder::new()
-        .name(name.into())
-        .spawn(move || f())
-        .map_err(Into::into)
 }
 
 #[cfg(test)]

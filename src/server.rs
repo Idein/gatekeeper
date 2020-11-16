@@ -83,6 +83,7 @@ use crate::error::Error;
 use crate::model::{ProtocolVersion, SocketAddr};
 use crate::server_command::ServerCommand;
 use crate::session::{Session, SessionHandle, SessionId};
+use crate::thread::spawn_thread;
 
 pub struct Server<S, T, C> {
     config: ServerConfig,
@@ -135,13 +136,16 @@ fn spawn_session<S, D, M>(
     tx: SyncSender<()>,
     addr: SocketAddr,
     strm: S,
-) -> SessionHandle
+) -> Result<SessionHandle, Error>
 where
     S: ByteStream + 'static,
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    SessionHandle::new(addr, thread::spawn(move || session.start(addr, strm)), tx)
+    let session_th = spawn_thread(&format!("{}: {}", session.id, addr), move || {
+        session.start(addr, strm)
+    })?;
+    Ok(SessionHandle::new(addr, session_th, tx))
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
@@ -230,8 +234,16 @@ where
                         self.config.connect_rule(),
                         self.tx_cmd.clone(),
                     );
-                    self.session
-                        .insert(session.id, spawn_session(session, tx, addr, stream));
+                    let id = session.id;
+                    match spawn_session(session, tx, addr, stream) {
+                        Ok(th) => {
+                            self.session.insert(id, th);
+                        }
+                        Err(err) => {
+                            error!("spawn_session: {}", err);
+                            debug!("spawn_session: {:?}", err);
+                        }
+                    };
                 }
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
