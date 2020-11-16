@@ -86,7 +86,7 @@ where
             let _guard = guard;
             let client_addr = client_addr.clone();
             let server_addr = server_addr.clone();
-            spawn_relay_half(rx, client_addr, server_addr, read_server, write_client)
+            spawn_relay_half(rx, server_addr, client_addr, read_server, write_client)
         })?
     };
     Ok(RelayHandle::new(
