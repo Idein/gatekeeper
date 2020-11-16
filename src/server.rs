@@ -105,19 +105,19 @@ pub struct Server<S, T, C> {
 fn spawn_acceptor<S>(
     acceptor: impl Iterator<Item = (S, SocketAddr)> + Send + 'static,
     tx: Sender<ServerCommand<S>>,
-) -> thread::JoinHandle<()>
+) -> Result<thread::JoinHandle<()>, Error>
 where
     S: ByteStream + 'static,
 {
     use ServerCommand::*;
-    thread::spawn(move || {
+    Ok(spawn_thread("acceptor", move || {
         for (strm, addr) in acceptor {
             if tx.send(Connect(strm, addr)).is_err() {
                 info!("disconnected ServerCommand chan");
                 break;
             }
         }
-    })
+    })?)
 }
 
 /// spawn a thread perform `Session.start`
@@ -207,7 +207,7 @@ where
     /// Server main loop
     pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
-        let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone());
+        let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone())?;
 
         while let Ok(cmd) = self.rx_cmd.recv() {
             use ServerCommand::*;
