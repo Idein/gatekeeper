@@ -136,7 +136,7 @@ fn spawn_session<S, D, M>(
     tx: SyncSender<()>,
     addr: SocketAddr,
     strm: S,
-) -> Result<SessionHandle, Error>
+) -> SessionHandle
 where
     S: ByteStream + 'static,
     D: Connector + 'static,
@@ -144,8 +144,9 @@ where
 {
     let session_th = spawn_thread(&format!("{}: {}", session.id, addr), move || {
         session.start(addr, strm)
-    })?;
-    Ok(SessionHandle::new(addr, session_th, tx))
+    })
+    .unwrap();
+    SessionHandle::new(addr, session_th, tx)
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
@@ -234,16 +235,8 @@ where
                         self.config.connect_rule(),
                         self.tx_cmd.clone(),
                     );
-                    let id = session.id;
-                    match spawn_session(session, tx, addr, stream) {
-                        Ok(th) => {
-                            self.session.insert(id, th);
-                        }
-                        Err(err) => {
-                            error!("spawn_session: {}", err);
-                            debug!("spawn_session: {:?}", err);
-                        }
-                    };
+                    self.session
+                        .insert(session.id, spawn_session(session, tx, addr, stream));
                 }
                 Disconnect(id) => {
                     if let Some(session) = self.session.remove(&id) {
