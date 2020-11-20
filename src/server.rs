@@ -83,6 +83,7 @@ use crate::error::Error;
 use crate::model::{ProtocolVersion, SocketAddr};
 use crate::server_command::ServerCommand;
 use crate::session::{Session, SessionHandle, SessionId};
+use crate::thread::spawn_thread;
 
 pub struct Server<S, T, C> {
     config: ServerConfig,
@@ -104,19 +105,19 @@ pub struct Server<S, T, C> {
 fn spawn_acceptor<S>(
     acceptor: impl Iterator<Item = (S, SocketAddr)> + Send + 'static,
     tx: Sender<ServerCommand<S>>,
-) -> thread::JoinHandle<()>
+) -> Result<thread::JoinHandle<()>, Error>
 where
     S: ByteStream + 'static,
 {
     use ServerCommand::*;
-    thread::spawn(move || {
+    Ok(spawn_thread("acceptor", move || {
         for (strm, addr) in acceptor {
             if tx.send(Connect(strm, addr)).is_err() {
                 info!("disconnected ServerCommand chan");
                 break;
             }
         }
-    })
+    })?)
 }
 
 /// spawn a thread perform `Session.start`
@@ -141,7 +142,11 @@ where
     D: Connector + 'static,
     M: AuthService + 'static,
 {
-    SessionHandle::new(addr, thread::spawn(move || session.start(addr, strm)), tx)
+    let session_th = spawn_thread(&format!("{}: {}", session.id, addr), move || {
+        session.start(addr, strm)
+    })
+    .unwrap();
+    SessionHandle::new(addr, session_th, tx)
 }
 
 impl Server<TcpStream, TcpBinder, TcpUdpConnector> {
@@ -203,7 +208,7 @@ where
     /// Server main loop
     pub fn serve(&mut self) -> Result<(), Error> {
         let acceptor = self.binder.bind(self.config.server_addr())?;
-        let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone());
+        let accept_th = spawn_acceptor(acceptor, self.tx_cmd.clone())?;
 
         while let Ok(cmd) = self.rx_cmd.recv() {
             use ServerCommand::*;

@@ -8,6 +8,7 @@ use log::*;
 use crate::byte_stream::{BoxedStream, ByteStream};
 use crate::model::{Error, ErrorKind};
 use crate::session::DisconnectGuard;
+use crate::thread::spawn_thread;
 
 #[derive(Debug)]
 pub struct RelayHandle {
@@ -85,7 +86,7 @@ where
             let _guard = guard;
             let client_addr = client_addr.clone();
             let server_addr = server_addr.clone();
-            spawn_relay_half(rx, client_addr, server_addr, read_server, write_client)
+            spawn_relay_half(rx, server_addr, client_addr, read_server, write_client)
         })?
     };
     Ok(RelayHandle::new(
@@ -105,12 +106,12 @@ fn spawn_relay_half(
 ) -> Result<(), Error> {
     // thread_name
     let name = thread::current().name().unwrap_or("<anonymous>").to_owned();
-    info!("spawned relay: {}: {}: {}", name, src_addr, dst_addr);
+    info!("spawned relay: {}: {} ==> {}", name, src_addr, dst_addr);
     loop {
         use io::ErrorKind as K;
         if check_termination(&rx).expect("main thread must be alive") {
             info!(
-                "relay thread is requested termination: {}: {}",
+                "relay thread is requested termination: {} ==> {}",
                 src_addr, dst_addr
             );
             return Ok(());
@@ -118,7 +119,7 @@ fn spawn_relay_half(
         match io::copy(&mut src, &mut dst) {
             Ok(0) => {
                 info!(
-                    "relay thread has been finished: {}: {}: {}",
+                    "relay thread has been finished: {}: {} ==> {}",
                     name, src_addr, dst_addr
                 );
                 return Ok(());
@@ -142,18 +143,6 @@ fn check_termination(rx: &Arc<Mutex<mpsc::Receiver<()>>>) -> Result<bool, Error>
             Err(ErrorKind::disconnected(thread::current().name().unwrap_or("<anonymous>")).into())
         }
     }
-}
-
-/// spawn `name`d thread performs `f`
-fn spawn_thread<F, R>(name: &str, f: F) -> Result<JoinHandle<R>, Error>
-where
-    F: FnOnce() -> R + Send + 'static,
-    R: Send + 'static,
-{
-    thread::Builder::new()
-        .name(name.into())
-        .spawn(move || f())
-        .map_err(Into::into)
 }
 
 #[cfg(test)]
