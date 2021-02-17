@@ -36,8 +36,8 @@ impl Connector for TcpUdpConnector {
             Address::Domain(host, port) => TcpStream::connect((host.as_str(), *port)),
         }
         .map_err(|err| conn_error(err, addr, L4Protocol::Tcp))?;
-        strm.set_read_timeout(self.rw_timeout.clone())?;
-        strm.set_write_timeout(self.rw_timeout.clone())?;
+        strm.set_read_timeout(self.rw_timeout)?;
+        strm.set_write_timeout(self.rw_timeout)?;
 
         let peer = strm.peer_addr()?;
         Ok((strm, peer))

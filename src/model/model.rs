@@ -44,7 +44,7 @@ pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion(5);
 
 // Domain labels can include letter, digit and hyphen
 // See https://tools.ietf.org/html/rfc1035#section-2.3.1
-const AVAILABLE_STRINGS_FOR_DOMAIN_LABEL: &'static str = r"[A-Za-z0-9-]{1,63}";
+static AVAILABLE_STRINGS_FOR_DOMAIN_LABEL: &str = r"[A-Za-z0-9-]{1,63}";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Into, From, Display)]
 pub struct ProtocolVersion(u8);
@@ -122,7 +122,7 @@ impl Address {
 
 impl From<SocketAddr> for Address {
     fn from(addr: SocketAddr) -> Self {
-        Address::IpAddr(addr.ip().clone(), addr.port())
+        Address::IpAddr(addr.ip(), addr.port())
     }
 }
 
@@ -402,19 +402,11 @@ pub enum RulePattern<P> {
 
 impl<P> RulePattern<P> {
     pub fn is_any(&self) -> bool {
-        if let RulePattern::Any = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, RulePattern::Any)
     }
 
     pub fn is_specif(&self) -> bool {
-        if let RulePattern::Specif(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, RulePattern::Specif(_))
     }
 }
 
@@ -652,7 +644,7 @@ IpAddr:
                 })?;
                 // base rule should be equal to any or none
                 if !base_rule.sum(|entry| entry.is_any()) {
-                    Err(de::Error::custom("base rule is not any or none"))?;
+                    return Err(de::Error::custom("base rule is not any or none"));
                 }
                 rules.push(base_rule);
                 // read remaining elements

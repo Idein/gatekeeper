@@ -7,11 +7,13 @@ use crate::model::Error;
 
 /// read/write operations on byte stream
 pub trait ByteStream: fmt::Debug + io::Read + io::Write + Send {
+    #[allow(clippy::type_complexity)]
     fn split(&self) -> Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>), Error>;
 }
 
 /// byte stream on tcp connection
 impl ByteStream for TcpStream {
+    #[allow(clippy::type_complexity)]
     fn split(&self) -> Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>), Error> {
         let rd = self.try_clone()?;
         let wr = self.try_clone()?;
@@ -21,6 +23,7 @@ impl ByteStream for TcpStream {
 
 /// Boxed stream
 impl<S: ByteStream> ByteStream for Box<S> {
+    #[allow(clippy::type_complexity)]
     fn split(&self) -> Result<(Box<dyn io::Read + Send>, Box<dyn io::Write + Send>), Error> {
         self.deref().split()
     }

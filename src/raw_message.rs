@@ -324,7 +324,7 @@ pub struct MethodCandidates {
 impl From<MethodCandidates> for model::MethodCandidates {
     fn from(candidates: MethodCandidates) -> Self {
         model::MethodCandidates {
-            version: candidates.ver.into(),
+            version: candidates.ver,
             method: candidates.methods.into_iter().map(Into::into).collect(),
         }
     }
@@ -333,7 +333,7 @@ impl From<MethodCandidates> for model::MethodCandidates {
 impl From<model::MethodCandidates> for MethodCandidates {
     fn from(candidates: model::MethodCandidates) -> Self {
         MethodCandidates {
-            ver: candidates.version.into(),
+            ver: candidates.version,
             methods: candidates.method.into_iter().map(Into::into).collect(),
         }
     }
@@ -348,7 +348,7 @@ pub struct MethodSelection {
 impl From<model::MethodSelection> for MethodSelection {
     fn from(select: model::MethodSelection) -> Self {
         MethodSelection {
-            ver: select.version.into(),
+            ver: select.version,
             method: select.method.into(),
         }
     }
@@ -357,7 +357,7 @@ impl From<model::MethodSelection> for MethodSelection {
 impl From<MethodSelection> for model::MethodSelection {
     fn from(select: MethodSelection) -> Self {
         model::MethodSelection {
-            version: select.ver.into(),
+            version: select.ver,
             method: select.method.into(),
         }
     }
@@ -443,7 +443,7 @@ impl TryFrom<ConnectRequest> for model::ConnectRequest {
     fn try_from(req: ConnectRequest) -> Result<Self, Self::Error> {
         let dst = AddrTriple::new(req.atyp, req.dst_addr, req.dst_port).try_into()?;
         Ok(model::ConnectRequest {
-            version: req.ver.into(),
+            version: req.ver,
             command: req.cmd.into(),
             connect_to: dst,
         })
@@ -463,7 +463,7 @@ impl From<model::ConnectRequest> for ConnectRequest {
             ),
         };
         ConnectRequest {
-            ver: req.version.into(),
+            ver: req.version,
             cmd: req.command.into(),
             rsv: 0,
             atyp,
@@ -487,7 +487,7 @@ impl TryFrom<ConnectReply> for model::ConnectReply {
     type Error = TryFromAddress;
     fn try_from(rep: ConnectReply) -> Result<Self, Self::Error> {
         Ok(model::ConnectReply {
-            version: rep.ver.into(),
+            version: rep.ver,
             connect_result: rep.rep.into(),
             server_addr: AddrTriple::new(rep.atyp, rep.bnd_addr, rep.bnd_port).try_into()?,
         })
@@ -507,7 +507,7 @@ impl From<model::ConnectReply> for ConnectReply {
             ),
         };
         ConnectReply {
-            ver: rep.version.into(),
+            ver: rep.version,
             rep: rep.connect_result.into(),
             rsv: 0u8,
             atyp,
