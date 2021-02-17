@@ -59,7 +59,7 @@ commands:
 jobs:
   build:
     docker:
-      - image: circleci/rust:1.40.0-stretch
+      - image: circleci/rust:1.50.0-buster
         environment:
           RUST_BACKTRACE: 1
           CARGO_HOME: /home/circleci/.cargo
