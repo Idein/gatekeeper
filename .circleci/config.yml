@@ -74,7 +74,17 @@ jobs:
             git config --global user.email "circleci@example.com"
             git config --global user.name "circleci"
             git merge --no-edit origin/master
+      - run:
+          name: Environment Setup
+          command: |
+            rustup component add clippy rustfmt
       - restore-rust-cache
+      - run:
+          name: Format
+          command: cargo fmt -- --check
+      - run:
+          name: Lint
+          command: cargo clippy -- -D warnings
       - run:
           name: Build Gatekeeper
           command: |
