@@ -1,4 +1,4 @@
-FROM ekidd/rust-musl-builder:1.40.0 AS builder
+FROM ekidd/rust-musl-builder:1.50.0 AS builder
 
 COPY src            src
 COPY rust-toolchain .
