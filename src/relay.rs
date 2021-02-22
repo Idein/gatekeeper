@@ -76,16 +76,12 @@ where
         let rx = rx.clone();
         spawn_thread("outbound", move || {
             let _guard = guard;
-            let client_addr = client_addr.clone();
-            let server_addr = server_addr.clone();
             spawn_relay_half(rx, client_addr, server_addr, read_client, write_server)
         })?
     };
     let incoming_th = {
         spawn_thread("incoming", move || {
             let _guard = guard;
-            let client_addr = client_addr.clone();
-            let server_addr = server_addr.clone();
             spawn_relay_half(rx, server_addr, client_addr, read_server, write_client)
         })?
     };
@@ -126,7 +122,9 @@ fn spawn_relay_half(
             }
             Ok(size) => trace!("{}: {} ==> {}: {} bytes", name, src_addr, dst_addr, size),
             Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {}
-            Err(err) => Err(err)?,
+            Err(err) => {
+                return Err(err.into());
+            }
         }
     }
 }

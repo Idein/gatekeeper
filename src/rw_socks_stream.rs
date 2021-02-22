@@ -52,7 +52,7 @@ where
     }
 
     fn read_rsv(&mut self) -> Result<u8, Error> {
-        let rsv = self.read_u8()?.into();
+        let rsv = self.read_u8()?;
         if rsv != RESERVED {
             Err(ErrorKind::message_fmt(format_args!("value of rsv is not 0({})", rsv)).into())
         } else {
@@ -182,7 +182,7 @@ where
     }
     fn write_methods(&mut self, nmethods: &[AuthMethods]) -> Result<(), Error> {
         let len = nmethods.len();
-        let methods: Vec<u8> = nmethods.into_iter().map(|m| m.code()).collect();
+        let methods: Vec<u8> = nmethods.iter().map(|m| m.code()).collect();
         self.write_u8(len as u8)?;
         self.write_all(methods.as_ref())?;
         Ok(())
@@ -264,8 +264,8 @@ where
         let mut buf: [u8; 256] = [0; 256];
         let pos = {
             let mut cur = io::Cursor::new(&mut buf[..]);
-            cur.write_version(connect_reply.ver.clone())?;
-            cur.write_rep(connect_reply.rep.into())?;
+            cur.write_version(connect_reply.ver)?;
+            cur.write_rep(connect_reply.rep)?;
             cur.write_u8(connect_reply.rsv)?;
             cur.write_atyp(connect_reply.atyp)?;
             cur.write_addr(&connect_reply.bnd_addr)?;
@@ -279,7 +279,7 @@ where
 
 /// Parse socks5 udp header expected for UDP_ASSOCIATE-d socket
 #[allow(dead_code)]
-pub fn read_datagram<'a>(buf: &'a [u8]) -> Result<model::UdpDatagram<'a>, model::Error> {
+pub fn read_datagram(buf: &[u8]) -> Result<model::UdpDatagram<'_>, model::Error> {
     let mut cur = io::Cursor::new(buf);
     let header = cur.read_udp()?;
     let dst_addr = AddrTriple::new(header.atyp, header.dst_addr, header.dst_port).try_into()?;

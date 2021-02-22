@@ -40,10 +40,10 @@ impl TcpAcceptor {
 
     fn accept_timeout(&self) -> io::Result<(TcpStream, SocketAddr)> {
         self.listener
-            .accept_timeout(self.accept_timeout.clone())
+            .accept_timeout(self.accept_timeout)
             .and_then(|(tcp, addr)| {
-                tcp.set_read_timeout(self.rw_timeout.clone())?;
-                tcp.set_write_timeout(self.rw_timeout.clone())?;
+                tcp.set_read_timeout(self.rw_timeout)?;
+                tcp.set_write_timeout(self.rw_timeout)?;
                 Ok((tcp, addr))
             })
     }

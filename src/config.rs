@@ -6,7 +6,6 @@ use crate::error::{Error, ErrorKind};
 use crate::model::{ConnectRule, IpAddr, Ipv4Addr, SocketAddr};
 
 use failure::ResultExt;
-use serde_yaml;
 
 /// Server configuration
 #[derive(Debug, Clone)]

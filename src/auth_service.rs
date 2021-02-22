@@ -51,10 +51,8 @@ impl AuthService for NoAuthService {
         B: ByteStream + 'a,
     {
         if method != Method::NoAuth {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                method.to_string(),
-            ))?;
+            let e = io::Error::new(io::ErrorKind::InvalidInput, method.to_string());
+            return Err(e.into());
         }
         // pass through without any authentication
         Ok(Box::new(conn))

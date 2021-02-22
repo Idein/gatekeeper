@@ -51,7 +51,7 @@ impl SessionHandle {
     }
 
     pub fn client_addr(&self) -> SocketAddr {
-        self.addr.clone()
+        self.addr
     }
 
     pub fn stop(&self) {
@@ -158,7 +158,7 @@ where
                 trace!("command error: {:?}", err);
                 // reply error
                 socks.send_connect_reply(self.connect_reply(Err(err.cerr())))?;
-                Err(err)?
+                return Err(err);
             }
         };
 
@@ -190,7 +190,7 @@ fn perform_command(
     match cmd {
         Command::Connect => {}
         cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
-            Err(ErrorKind::command_not_supported(cmd))?
+            return Err(ErrorKind::command_not_supported(cmd).into());
         }
     };
     // filter out request not sufficies the connection rule
@@ -198,7 +198,7 @@ fn perform_command(
     connector.connect_byte_stream(connect_to)
 }
 
-fn negotiate_auth_method<'a>(
+fn negotiate_auth_method(
     version: ProtocolVersion,
     auth: impl Deref<Target = impl AuthService>,
     mut socks: impl DerefMut<Target = impl SocksStream>,
