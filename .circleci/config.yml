@@ -59,7 +59,7 @@ commands:
 jobs:
   build:
     docker:
-      - image: circleci/rust:1.50.0-buster
+      - image: cimg/rust:1.50.0
         environment:
           RUST_BACKTRACE: 1
           CARGO_HOME: /home/circleci/.cargo
@@ -97,7 +97,7 @@ jobs:
 
   integration_test:
     machine:
-      image: circleci/classic:201808-01
+      image: ubuntu-2004:202201-02
     environment:
       RUST_BACKTRACE: 1
       GIT_AUTHOR_NAME: circleci
