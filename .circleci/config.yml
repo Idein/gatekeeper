@@ -59,20 +59,20 @@ commands:
 jobs:
   build:
     docker:
-      - image: circleci/rust:1.50.0-buster
+      - image: cimg/rust:1.50.0
         environment:
           RUST_BACKTRACE: 1
           CARGO_HOME: /home/circleci/.cargo
           GIT_AUTHOR_NAME: circleci
           GIT_AUTHOR_EMAIL: circleci@example.com
+          GIT_COMMITTER_NAME: circleci
+          GIT_COMMITTER_EMAIL: circleci@example.com
     working_directory: /tmp/gatekeeper
     steps:
       - checkout
       - run:
           name: Merge origin/master
           command: |
-            git config --global user.email "circleci@example.com"
-            git config --global user.name "circleci"
             git merge --no-edit origin/master
       - run:
           name: Environment Setup
@@ -97,19 +97,19 @@ jobs:
 
   integration_test:
     machine:
-      image: circleci/classic:201808-01
+      image: ubuntu-2004:202201-02
     environment:
       RUST_BACKTRACE: 1
       GIT_AUTHOR_NAME: circleci
       GIT_AUTHOR_EMAIL: circleci@example.com
+      GIT_COMMITTER_NAME: circleci
+      GIT_COMMITTER_EMAIL: circleci@example.com
     working_directory: /tmp/gatekeeper
     steps:
       - checkout
       - run:
           name: Merge origin/master
           command: |
-            git config --global user.email "circleci@example.com"
-            git config --global user.name "circleci"
             git merge --no-edit origin/master
       - run: cat rust-toolchain >> /tmp/rustup
       - install-rustup
