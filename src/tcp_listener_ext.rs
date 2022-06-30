@@ -73,14 +73,18 @@ fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<
         libc::AF_INET => {
             assert!(len as usize >= mem::size_of::<libc::sockaddr_in>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in) };
-            Ok(SocketAddrV4::new(addr.sin_addr.s_addr.into(), addr.sin_port).into())
+            Ok(SocketAddrV4::new(
+                u32::from_be(addr.sin_addr.s_addr).into(),
+                u16::from_be(addr.sin_port),
+            )
+            .into())
         }
         libc::AF_INET6 => {
             assert!(len as usize >= mem::size_of::<libc::sockaddr_in6>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in6) };
             Ok(SocketAddrV6::new(
-                addr.sin6_addr.s6_addr.into(),
-                addr.sin6_port,
+                u128::from_be_bytes(addr.sin6_addr.s6_addr).into(),
+                u16::from_be(addr.sin6_port),
                 addr.sin6_flowinfo,
                 addr.sin6_scope_id,
             )
