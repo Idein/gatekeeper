@@ -1,4 +1,20 @@
 # hadolint ignore=DL3007
+FROM --platform=$BUILDPLATFORM rust:1.50.0-slim-buster AS fetcher
+
+ENV HOME /root
+
+WORKDIR /gatekeeper
+
+RUN cargo init
+
+COPY src            src
+COPY rust-toolchain .
+COPY Cargo.toml     .
+COPY Cargo.lock     .
+
+RUN mkdir -p /gatekeeper/.cargo && cargo vendor > /gatekeeper/.cargo/config
+
+# hadolint ignore=DL3007
 FROM balenalib/rpi-raspbian:latest AS builder
 
 ENV HOME /root
@@ -9,6 +25,8 @@ COPY src            src
 COPY rust-toolchain .
 COPY Cargo.toml     .
 COPY Cargo.lock     .
+COPY --from=fetcher /gatekeeper/.cargo /gatekeeper/.cargo
+COPY --from=fetcher /gatekeeper/vendor /gatekeeper/vendor
 
 RUN update-ca-certificates -f && \
     curl -sSfL https://sh.rustup.rs > rustup.sh && \
@@ -27,11 +45,11 @@ ENV RUSTFLAGS "-Clinker=arm-linux-gnueabihf-gcc"
 ARG TARGET=arm-unknown-linux-gnueabihf
 
 RUN rustup target add "$TARGET" && \
-    cargo build --target "$TARGET" --release && \
+    cargo build --target "$TARGET" --release --offline && \
     cp "target/$TARGET/release/gatekeeperd" /
 
 # hadolint ignore=DL3007
-FROM balenalib/rpi-raspbian:latest AS runner
+FROM --platform=$BUILDPLATFORM balenalib/rpi-raspbian:latest AS runner
 
 COPY --from=builder /gatekeeperd /
 
