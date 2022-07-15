@@ -22,9 +22,10 @@ target "x86_64" {
 }
 
 target "arm32v6" {
-	dockerfile = "Dockerfile.arm32v6"
+	dockerfile = "Dockerfile.arm32"
 	args = {
 		GATEKEEPER_VER = "${GATEKEEPER_VER}"
+		TARGET         = "arm-unknown-linux-gnueabihf"
 	}
 	tags = ["docker.io/idein/gatekeeper:${GATEKEEPER_VER}-arm32v6"]
 	platforms = ["linux/arm/v6"]
@@ -32,9 +33,10 @@ target "arm32v6" {
 }
 
 target "arm32v7" {
-	dockerfile = "Dockerfile.arm32v7"
+	dockerfile = "Dockerfile.arm32"
 	args = {
 		GATEKEEPER_VER = "${GATEKEEPER_VER}"
+		TARGET         = "armv7-unknown-linux-gnueabihf"
 	}
 	tags = ["docker.io/idein/gatekeeper:${GATEKEEPER_VER}-arm32v7"]
 	platforms = ["linux/arm/v7"]
