@@ -1,4 +1,3 @@
-# hadolint ignore=DL3007
 FROM --platform=$BUILDPLATFORM rust:1.50.0-slim-buster AS fetcher
 
 ENV HOME /root
