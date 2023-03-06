@@ -86,7 +86,7 @@ pub mod test {
 
     impl<S> BufferConnector<S> {
         pub fn stream(&self, addr: &Address) -> &S {
-            &self.strms[addr].as_ref().unwrap()
+            self.strms[addr].as_ref().unwrap()
         }
     }
 

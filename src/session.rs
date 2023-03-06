@@ -124,7 +124,7 @@ where
         ConnectReply {
             version: self.version,
             connect_result,
-            server_addr: self.server_addr.clone().into(),
+            server_addr: self.server_addr.into(),
         }
     }
 
