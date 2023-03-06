@@ -171,7 +171,7 @@ where
                     .into());
                 }
                 self.write_u8(domain.len() as u8)?;
-                self.write_all(&domain)?
+                self.write_all(domain)?
             }
         }
         Ok(())

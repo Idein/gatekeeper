@@ -8,5 +8,5 @@ where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
-    thread::Builder::new().name(name.into()).spawn(move || f())
+    thread::Builder::new().name(name.into()).spawn(f)
 }

@@ -122,7 +122,7 @@ impl Binder for TcpBinder {
         let tcp = net2::TcpBuilder::new_v4()?;
         let tcp = tcp
             .reuse_address(true)?
-            .bind(&addr)
+            .bind(addr)
             .map_err(|err| addr_error(err, addr))?;
 
         // `backlog` parameter to `TcpBuilder::listen() is directly passed to `listen(2)` system call.
