@@ -35,7 +35,7 @@ pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketA
 use std::str::FromStr;
 
 use derive_more::{Display, From, Into};
-use failure::Fail;
+use anyhow::Context;
 use log::*;
 use regex::{escape, Regex};
 use serde::*;
@@ -277,20 +277,12 @@ pub enum DomainPattern {
     },
 }
 
-#[derive(Fail, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum InvalidPrefix {
+    #[error("{} is too large for {}", prefix, addr)]
     V4 { addr: Ipv4Addr, prefix: u8 },
+    #[error("{} is too large for {}", prefix, addr)]
     V6 { addr: Ipv6Addr, prefix: u8 },
-}
-
-impl fmt::Display for InvalidPrefix {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use InvalidPrefix::*;
-        match self {
-            V4 { addr, prefix } => write!(f, "{} is too large for {}", prefix, addr),
-            V6 { addr, prefix } => write!(f, "{} is too large for {}", prefix, addr),
-        }
-    }
 }
 
 impl de::Expected for InvalidPrefix {

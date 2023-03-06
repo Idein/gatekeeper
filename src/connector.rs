@@ -8,8 +8,6 @@ use crate::model::error::Error;
 use crate::model::model::*;
 use crate::pkt_stream::{PktStream, UdpPktStream};
 
-use failure::Fail;
-
 pub trait Connector: Send {
     type B: ByteStream;
     type P: PktStream;
@@ -52,10 +50,9 @@ impl Connector for TcpUdpConnector {
 }
 
 fn conn_error(io_err: io::Error, addr: Address, prot: L4Protocol) -> model::Error {
-    use model::ErrorKind;
     match io_err.kind() {
-        io::ErrorKind::ConnectionRefused => ErrorKind::connection_refused(addr, prot).into(),
-        _ => io_err.context(ErrorKind::Io),
+        io::ErrorKind::ConnectionRefused => Error::connection_refused(addr, prot).into(),
+        _ => Error::from(io_err),
     }
     .into()
 }

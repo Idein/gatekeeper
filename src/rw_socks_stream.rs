@@ -3,11 +3,11 @@ use std::fmt;
 use std::io;
 use std::slice;
 
-use failure::ResultExt;
+use anyhow::Context;
 use log::*;
 
 use crate::model;
-use crate::model::{Error, ErrorKind, SocksStream};
+use crate::model::{Error, SocksStream};
 use crate::raw_message::{self as raw, *};
 
 trait ReadSocksExt {
@@ -54,7 +54,7 @@ where
     fn read_rsv(&mut self) -> Result<u8, Error> {
         let rsv = self.read_u8()?;
         if rsv != RESERVED {
-            Err(ErrorKind::message_fmt(format_args!("value of rsv is not 0({})", rsv)).into())
+            Err(Error::message_fmt(format_args!("value of rsv is not 0({})", rsv)).into())
         } else {
             Ok(rsv)
         }
@@ -72,19 +72,19 @@ where
     }
 
     fn read_rep(&mut self) -> Result<ResponseCode, Error> {
-        let rep = ResponseCode::from_u8(self.read_u8()?).context(ErrorKind::Io)?;
+        let rep = ResponseCode::from_u8(self.read_u8()?).map_err(|e|Error::Io(e.into()))?;
         Ok(rep)
     }
 
     fn read_cmd(&mut self) -> Result<SockCommand, Error> {
         let cmd = TryInto::<SockCommand>::try_into(self.read_u8()?)
-            .context(ErrorKind::message_fmt(format_args!("ConnectRequest::cmd")))?;
+            .context(Error::message_fmt(format_args!("ConnectRequest::cmd")))?;
         Ok(cmd)
     }
 
     fn read_atyp(&mut self) -> Result<AddrType, Error> {
         let atyp = TryInto::<AddrType>::try_into(self.read_u8()?)
-            .context(ErrorKind::message_fmt(format_args!("ConnectRequest::atyp")))?;
+            .context(Error::message_fmt(format_args!("ConnectRequest::atyp")))?;
         Ok(atyp)
     }
 
@@ -255,7 +255,7 @@ where
             dst_port,
         }
         .try_into()
-        .map_err(|err| ErrorKind::message_fmt(format_args!("{}", err)))?)
+        .map_err(|err| Error::message_fmt(format_args!("{}", err)))?)
     }
 
     fn send_connect_reply(&mut self, connect_reply: model::ConnectReply) -> Result<(), Error> {

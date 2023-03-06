@@ -6,7 +6,7 @@ use std::thread::{self, JoinHandle};
 use log::*;
 
 use crate::byte_stream::{BoxedStream, ByteStream};
-use crate::model::{Error, ErrorKind};
+use crate::model::Error;
 use crate::session::DisconnectGuard;
 use crate::thread::spawn_thread;
 
@@ -140,7 +140,7 @@ fn check_termination(rx: &Arc<Mutex<mpsc::Receiver<()>>>) -> Result<bool, Error>
             Ok(false)
         }
         Err(TryRecvError::Disconnected) => {
-            Err(ErrorKind::disconnected(thread::current().name().unwrap_or("<anonymous>")).into())
+            Err(Error::disconnected(thread::current().name().unwrap_or("<anonymous>")).into())
         }
     }
 }

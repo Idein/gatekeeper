@@ -1,103 +1,44 @@
-use std::fmt;
-use std::fmt::Display;
-
-use failure::{Backtrace, Context, Fail};
-
 use crate::model;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-#[derive(Fail, Debug)]
-pub enum ErrorKind {
-    #[fail(display = "io error")]
-    Io,
-    #[fail(display = "config error")]
-    Config,
-    #[fail(display = "auth error")]
-    Auth,
-    #[fail(display = "permission error")]
-    Permission,
-    #[fail(display = "not supported error")]
-    NotSupported,
-    #[fail(display = "not allowed error")]
-    NotAllowed,
-    #[fail(display = "unknown error")]
-    Unknown,
-}
-
-#[derive(Debug)]
-pub struct Error {
-    inner: Context<ErrorKind>,
-}
-
-impl Fail for Error {
-    fn cause(&self) -> Option<&dyn Fail> {
-        self.inner.cause()
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        self.inner.backtrace()
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.inner, f)
-    }
-}
-
-impl Error {
-    pub fn new(inner: Context<ErrorKind>) -> Error {
-        Error { inner }
-    }
-
-    pub fn kind(&self) -> &ErrorKind {
-        self.inner.get_context()
-    }
-}
-
-impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Error {
-        Error {
-            inner: Context::new(kind),
-        }
-    }
-}
-
-impl From<Context<ErrorKind>> for Error {
-    fn from(inner: Context<ErrorKind>) -> Error {
-        Error { inner }
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        Error {
-            inner: error.context(ErrorKind::Io),
-        }
-    }
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("io error")]
+    Io(#[source] anyhow::Error),
+    #[error("config error")]
+    Config(#[source] anyhow::Error),
+    #[error("auth error")]
+    Auth(#[source] anyhow::Error),
+    #[error("permission error")]
+    Permission(#[source] anyhow::Error),
+    #[error("not supported error")]
+    NotSupported(#[source] anyhow::Error),
+    #[error("not allowed error")]
+    NotAllowed(#[source] anyhow::Error),
+    #[error("unknown error")]
+    Unknown(#[source] anyhow::Error),
 }
 
 impl From<model::Error> for Error {
     fn from(err: model::Error) -> Self {
-        use model::ErrorKind as K;
-        let ctx = match err.kind() {
-            K::Io => err.context(ErrorKind::Io),
-            K::Poisoned(_) => err.context(ErrorKind::Io),
-            K::Disconnected { .. } => err.context(ErrorKind::Io),
-            K::MessageFormat { .. } => err.context(ErrorKind::Unknown),
-            K::Authentication => err.context(ErrorKind::Auth),
-            K::NoAcceptableMethod => err.context(ErrorKind::NotSupported),
-            K::UnrecognizedUsernamePassword => err.context(ErrorKind::Auth),
-            K::CommandNotSupported { .. } => err.context(ErrorKind::NotSupported),
-            K::HostUnreachable { .. } => err.context(ErrorKind::Io),
-            K::DomainNotResolved { .. } => err.context(ErrorKind::Io),
-            K::PacketSizeLimitExceeded { .. } => err.context(ErrorKind::Io),
-            K::AddressAlreadInUse { .. } => err.context(ErrorKind::Io),
-            K::AddressNotAvailable { .. } => err.context(ErrorKind::Io),
-            K::ConnectionNotAllowed { .. } => err.context(ErrorKind::NotAllowed),
-            K::ConnectionRefused { .. } => err.context(ErrorKind::Io),
-        };
-        Error { inner: ctx }
+        use model::Error as K;
+        match err {
+            K::Io(..) => Error::Io(err.into()),
+            K::Poisoned(..) => Error::Io(err.into()),
+            K::Disconnected { .. } => Error::Io(err.into()),
+            K::MessageFormat { .. } => Error::Unknown(err.into()),
+            K::Authentication => Error::Auth(err.into()),
+            K::NoAcceptableMethod => Error::NotSupported(err.into()),
+            K::UnrecognizedUsernamePassword => Error::Auth(err.into()),
+            K::CommandNotSupported { .. } => Error::NotSupported(err.into()),
+            K::HostUnreachable { .. } => Error::Io(err.into()),
+            K::DomainNotResolved { .. } => Error::Io(err.into()),
+            K::PacketSizeLimitExceeded { .. } => Error::Io(err.into()),
+            K::AddressAlreadInUse { .. } => Error::Io(err.into()),
+            K::AddressNotAvailable { .. } => Error::Io(err.into()),
+            K::ConnectionNotAllowed { .. } => Error::NotAllowed(err.into()),
+            K::ConnectionRefused { .. } => Error::Io(err.into()),
+        }
     }
 }
