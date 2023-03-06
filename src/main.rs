@@ -29,13 +29,13 @@ struct Opt {
 
 fn set_handler(signals: &[i32], handler: impl Fn(i32) + Send + 'static) -> io::Result<()> {
     use signal_hook::*;
-    let signals = iterator::Signals::new(signals)?;
+    let mut signals = iterator::Signals::new(signals)?;
     std::thread::spawn(move || signals.forever().for_each(handler));
     Ok(())
 }
 
 fn main() {
-    use signal_hook::*;
+    use signal_hook::consts::signal::*;
     pretty_env_logger::init_timed();
 
     println!("gatekeeperd");

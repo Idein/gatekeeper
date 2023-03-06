@@ -25,8 +25,7 @@ impl TcpListenerExt for TcpListener {
 
         let mut fds = FdSet::new();
         fds.insert(fd);
-        let r = select(None, &mut fds, None, None, &mut tm)
-            .map_err(|err| io::Error::from_raw_os_error(err.as_errno().unwrap() as i32))?;
+        let r = select(None, &mut fds, None, None, &mut tm).map_err(io::Error::from)?;
         if r == 0 {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "select accept"));
         }
