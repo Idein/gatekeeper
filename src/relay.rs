@@ -13,8 +13,10 @@ use crate::thread::spawn_thread;
 #[derive(Debug)]
 pub struct RelayHandle {
     /// client address
+    #[allow(dead_code)]
     client_addr: SocketAddr,
     /// server address
+    #[allow(dead_code)]
     server_addr: SocketAddr,
     /// handle to relay: client -> external network
     outbound_th: JoinHandle<Result<(), Error>>,
@@ -184,13 +186,10 @@ mod tests {
             .unwrap()
         };
 
-        assert!(
-            if let ServerCommand::Disconnect(SessionId(0)) = rx_server.recv().unwrap() {
-                true
-            } else {
-                false
-            }
-        );
+        assert!(matches!(
+            rx_server.recv().unwrap(),
+            ServerCommand::Disconnect(SessionId(0))
+        ));
 
         tx_relay.send(()).unwrap_err();
         handle.join().unwrap().unwrap();
