@@ -268,13 +268,10 @@ mod tests {
             .unwrap()
         };
 
-        assert!(
-            if let ServerCommand::Disconnect(SessionId(0)) = rx_server.recv().unwrap() {
-                true
-            } else {
-                false
-            }
-        );
+        assert!(matches!(
+            rx_server.recv().unwrap(),
+            ServerCommand::Disconnect(SessionId(0))
+        ));
 
         tx_relay.send(()).unwrap_err();
         handle.join().unwrap().unwrap();
