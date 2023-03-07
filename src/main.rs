@@ -11,7 +11,7 @@ use log::*;
 use gatekeeper as gk;
 
 #[derive(clap::Parser, Debug)]
-#[command()]
+#[command(author, version, about, long_about = None)]
 struct Opt {
     #[arg(short = 'p', long = "port", default_value = "1080")]
     /// Set port to listen on
