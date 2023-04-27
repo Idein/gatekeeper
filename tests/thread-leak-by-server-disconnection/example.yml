@@ -1,3 +1,7 @@
+- Deny:
+    address: Any
+    port: Any
+    protocol: Any
 - Allow:
     address:
       Specif:
