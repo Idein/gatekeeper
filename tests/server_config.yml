@@ -1,0 +1,28 @@
+---
+- Deny:
+    address: Any
+    port: Any
+    protocol: Any
+- Allow:
+    address:
+      Specif:
+        IpAddr:
+          addr: 192.168.0.1
+          prefix: 16
+    port: Any
+    protocol: Any
+- Allow:
+    address:
+      Specif:
+        Domain:
+          pattern: '\Alocalhost\z'
+    port: Any
+    protocol: Any
+- Allow:
+    address:
+      Specif:
+        IpAddr:
+          addr: 127.0.0.1
+          prefix: 16
+    port: Any
+    protocol: Any

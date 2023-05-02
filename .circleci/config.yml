@@ -1,5 +1,8 @@
 version: 2.1
 
+orbs:
+  node: circleci/node@5.1.0
+
 constants:
   version-parameter: &version-parameter
     version:
@@ -42,6 +45,10 @@ commands:
           key: *cache-key-rustup
           paths:
             - ~/.rustup
+  install-node:
+    steps:
+      - node/install:
+          node-version: '18'
   deploy:
     parameters:
       <<: *version-parameter
@@ -113,6 +120,7 @@ jobs:
             git merge --no-edit origin/master
       - run: cat rust-toolchain >> /tmp/rustup
       - install-rustup
+      - install-node
       - restore-rust-cache
       - run:
           name: Build Image
@@ -127,6 +135,11 @@ jobs:
           shell: /bin/bash --login -eo pipefail
           command: |
             cargo test --verbose -- --nocapture --ignored
+      - run:
+          name: connection_rst_test
+          command: |
+            cargo run -- --rule tests/server_config.yml --port 18080 &
+            timeout 30 node tests/connection_rst_test.js
       - save-rust-cache
 
   deploy-latest:
