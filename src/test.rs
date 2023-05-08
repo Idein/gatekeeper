@@ -1,10 +1,8 @@
-#![cfg(test)]
-use std::path::PathBuf;
-
 #[test]
 #[ignore]
 fn get_main() {
     use std::io::prelude::*;
+    use std::path::PathBuf;
 
     use log::*;
     use regex::Regex;
