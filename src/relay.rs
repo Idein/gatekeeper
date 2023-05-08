@@ -1,5 +1,6 @@
 use std::io;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -12,10 +13,6 @@ use crate::thread::spawn_thread;
 
 #[derive(Debug)]
 pub struct RelayHandle {
-    /// client address
-    client_addr: SocketAddr,
-    /// server address
-    server_addr: SocketAddr,
     /// handle to relay: client -> external network
     outbound_th: JoinHandle<Result<(), Error>>,
     /// handle to relay: client <- external network
@@ -24,14 +21,10 @@ pub struct RelayHandle {
 
 impl RelayHandle {
     fn new(
-        client_addr: SocketAddr,
-        server_addr: SocketAddr,
         outbound_th: JoinHandle<Result<(), Error>>,
         incoming_th: JoinHandle<Result<(), Error>>,
     ) -> Self {
         Self {
-            client_addr,
-            server_addr,
             outbound_th,
             incoming_th,
         }
@@ -70,31 +63,47 @@ where
 {
     let (read_client, write_client) = client_conn.split()?;
     let (read_server, write_server) = server_conn.split()?;
+    let thread_shutdown = Arc::new(AtomicBool::new(false));
 
     let outbound_th = {
         let guard = guard.clone();
+        let thread_shutdown = thread_shutdown.clone();
         let rx = rx.clone();
         spawn_thread("outbound", move || {
             let _guard = guard;
-            spawn_relay_half(rx, client_addr, server_addr, read_client, write_server)
+            let result = spawn_relay_half(
+                rx,
+                thread_shutdown.clone(),
+                client_addr,
+                server_addr,
+                read_client,
+                write_server,
+            );
+            thread_shutdown.store(true, Ordering::Relaxed);
+            result
         })?
     };
     let incoming_th = {
         spawn_thread("incoming", move || {
             let _guard = guard;
-            spawn_relay_half(rx, server_addr, client_addr, read_server, write_client)
+            let result = spawn_relay_half(
+                rx,
+                thread_shutdown.clone(),
+                server_addr,
+                client_addr,
+                read_server,
+                write_client,
+            );
+            thread_shutdown.store(true, Ordering::Relaxed);
+            result
         })?
     };
-    Ok(RelayHandle::new(
-        client_addr,
-        server_addr,
-        outbound_th,
-        incoming_th,
-    ))
+    Ok(RelayHandle::new(outbound_th, incoming_th))
 }
 
 fn spawn_relay_half(
     rx: Arc<Mutex<mpsc::Receiver<()>>>,
+    thread_shutdown: Arc<AtomicBool>,
     src_addr: SocketAddr,
     dst_addr: SocketAddr,
     mut src: impl io::Read + Send + 'static,
@@ -121,7 +130,12 @@ fn spawn_relay_half(
                 return Ok(());
             }
             Ok(size) => trace!("{}: {} ==> {}: {} bytes", name, src_addr, dst_addr, size),
-            Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {}
+            Err(err) if err.kind() == K::WouldBlock || err.kind() == K::TimedOut => {
+                if thread_shutdown.load(Ordering::Relaxed) {
+                    // the other thread is already terminated, so finish this loop
+                    return Ok(());
+                }
+            }
             Err(err) => {
                 return Err(err.into());
             }
@@ -146,6 +160,76 @@ fn check_termination(rx: &Arc<Mutex<mpsc::Receiver<()>>>) -> Result<bool, Error>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+
+    #[derive(Debug, Clone)]
+    struct ErrorStream;
+    impl Read for ErrorStream {
+        fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+            Err(io::ErrorKind::ConnectionReset.into())
+        }
+    }
+
+    impl Write for ErrorStream {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl ByteStream for ErrorStream {
+        fn split(&self) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>), Error> {
+            Ok((Box::new(self.clone()), Box::new(self.clone())))
+        }
+    }
+
+    #[test]
+    fn shutdown_relay_by_connection_rest() {
+        use crate::byte_stream::test::IterBuffer;
+        use crate::server_command::ServerCommand;
+        use crate::session::SessionId;
+
+        let client_writer = Arc::new(Mutex::new(io::Cursor::new(vec![])));
+        let client_addr = "192.168.1.1:45678".parse().unwrap();
+        let dummy_client_conn = Box::new(IterBuffer {
+            iter: vec![b"hello".to_vec(), b" ".to_vec(), b"client".to_vec()].into_iter(),
+            wr_buff: client_writer.clone(),
+        }) as Box<dyn ByteStream>;
+
+        let server_addr = "192.168.1.1:45678".parse().unwrap();
+        let dummy_server_conn = ErrorStream {};
+
+        let (_tx_relay, rx_relay) = mpsc::channel();
+        let (tx_server, rx_server) = mpsc::channel();
+        let guard = Arc::new(Mutex::new(DisconnectGuard::<()>::new(0.into(), tx_server)));
+
+        let handle = {
+            let rx_relay = Arc::new(Mutex::new(rx_relay));
+            spawn_relay(
+                client_addr,
+                server_addr,
+                dummy_client_conn,
+                dummy_server_conn,
+                rx_relay,
+                guard,
+            )
+            .unwrap()
+        };
+
+        assert!(
+            if let ServerCommand::Disconnect(SessionId(0)) = rx_server.recv().unwrap() {
+                true
+            } else {
+                false
+            }
+        );
+
+        let result = handle.join().unwrap();
+        assert!(matches!(result, Err(e) if e.kind() == &ErrorKind::Io));
+    }
 
     #[test]
     fn shutdown_relay() {
