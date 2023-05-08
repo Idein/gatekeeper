@@ -56,11 +56,11 @@ pub mod test {
             }
         }
 
-        pub fn rd_buff<'a>(&'a self) -> MutexGuard<'a, io::Cursor<Vec<u8>>> {
+        pub fn rd_buff(&self) -> MutexGuard<'_, io::Cursor<Vec<u8>>> {
             self.rd_buff.lock().unwrap()
         }
 
-        pub fn wr_buff<'a>(&'a self) -> MutexGuard<'a, io::Cursor<Vec<u8>>> {
+        pub fn wr_buff(&self) -> MutexGuard<'_, io::Cursor<Vec<u8>>> {
             self.wr_buff.lock().unwrap()
         }
     }
@@ -166,9 +166,9 @@ pub mod test {
         let size = iter_buffer.read(&mut buff).unwrap();
         assert_eq!(&b"world"[..], &buff[..size]);
 
-        iter_buffer.write(&b"hello"[..]).unwrap();
-        iter_buffer.write(&b" "[..]).unwrap();
-        iter_buffer.write(&b"world"[..]).unwrap();
+        iter_buffer.write_all(&b"hello"[..]).unwrap();
+        iter_buffer.write_all(&b" "[..]).unwrap();
+        iter_buffer.write_all(&b"world"[..]).unwrap();
         let wr_buff = iter_buffer.wr_buff.lock().unwrap();
         assert_eq!(wr_buff.get_ref().as_slice(), &b"hello world"[..])
     }

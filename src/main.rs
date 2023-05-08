@@ -7,39 +7,39 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 
 use log::*;
-use structopt::*;
 
 use gatekeeper as gk;
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "gatekeeper")]
+#[derive(clap::Parser, Debug)]
+#[command(author, version, about, long_about = None)]
 struct Opt {
-    #[structopt(short = "p", long = "port", default_value = "1080")]
+    #[arg(short = 'p', long = "port", default_value = "1080")]
     /// Set port to listen on
     port: u16,
 
-    #[structopt(short = "i", long = "ip", default_value = "0.0.0.0")]
+    #[arg(short = 'i', long = "ip", default_value = "0.0.0.0")]
     /// Set ipaddress to listen on
     ipaddr: IpAddr,
 
-    #[structopt(short = "r", long = "rule")]
+    #[arg(short = 'r', long = "rule")]
     /// Set path to connection rule file (format: yaml)
     rulefile: Option<PathBuf>,
 }
 
 fn set_handler(signals: &[i32], handler: impl Fn(i32) + Send + 'static) -> io::Result<()> {
     use signal_hook::*;
-    let signals = iterator::Signals::new(signals)?;
+    let mut signals = iterator::Signals::new(signals)?;
     std::thread::spawn(move || signals.forever().for_each(handler));
     Ok(())
 }
 
 fn main() {
-    use signal_hook::*;
+    use signal_hook::consts::signal::*;
     pretty_env_logger::init_timed();
 
     println!("gatekeeperd");
-    let opt = Opt::from_args();
+    use clap::Parser;
+    let opt = Opt::parse();
     debug!("option: {:?}", opt);
 
     let config = match opt.rulefile {

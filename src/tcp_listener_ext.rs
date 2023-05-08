@@ -25,8 +25,7 @@ impl TcpListenerExt for TcpListener {
 
         let mut fds = FdSet::new();
         fds.insert(fd);
-        let r = select(None, &mut fds, None, None, &mut tm)
-            .map_err(|err| io::Error::from_raw_os_error(err.as_errno().unwrap() as i32))?;
+        let r = select(None, &mut fds, None, None, &mut tm).map_err(io::Error::from)?;
         if r == 0 {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "select accept"));
         }
@@ -71,7 +70,7 @@ fn dur_to_timeval<T: TimeValLike>(dur: Duration) -> io::Result<T> {
 fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<SocketAddr> {
     match storage.ss_family as libc::c_int {
         libc::AF_INET => {
-            assert!(len as usize >= mem::size_of::<libc::sockaddr_in>());
+            assert!(len >= mem::size_of::<libc::sockaddr_in>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in) };
             Ok(SocketAddrV4::new(
                 u32::from_be(addr.sin_addr.s_addr).into(),
@@ -80,7 +79,7 @@ fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<
             .into())
         }
         libc::AF_INET6 => {
-            assert!(len as usize >= mem::size_of::<libc::sockaddr_in6>());
+            assert!(len >= mem::size_of::<libc::sockaddr_in6>());
             let addr = unsafe { *(storage as *const _ as *const libc::sockaddr_in6) };
             Ok(SocketAddrV6::new(
                 u128::from_be_bytes(addr.sin6_addr.s6_addr).into(),

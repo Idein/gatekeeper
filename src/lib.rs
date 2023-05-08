@@ -105,6 +105,7 @@ pub mod server;
 pub mod server_command;
 mod session;
 mod tcp_listener_ext;
+#[cfg(test)]
 mod test;
 mod thread;
 

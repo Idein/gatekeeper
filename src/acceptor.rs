@@ -119,19 +119,23 @@ impl Binder for TcpBinder {
     type Stream = TcpStream;
     type Iter = TcpAcceptor;
     fn bind(&self, addr: SocketAddr) -> Result<Self::Iter, Error> {
-        let tcp = net2::TcpBuilder::new_v4()?;
-        let tcp = tcp
-            .reuse_address(true)?
-            .bind(&addr)
+        let tcp = socket2::Socket::new(
+            socket2::Domain::IPV4,
+            socket2::Type::STREAM,
+            Some(socket2::Protocol::TCP),
+        )?;
+        tcp.set_reuse_address(true)
+            .map_err(|err| addr_error(err, addr))?;
+        tcp.bind(&addr.into())
             .map_err(|err| addr_error(err, addr))?;
 
         // `backlog` parameter to `TcpBuilder::listen() is directly passed to `listen(2)` system call.
         // If it is too small, clients may not `connect(2)` to the server.
         // Here, `backlog` is intended to be as large as `net.core.somaxconn` kernel parameter,
-        let listener = tcp.listen(256)?;
+        tcp.listen(256)?;
 
         Ok(TcpAcceptor::new(
-            listener,
+            tcp.into(),
             self.rw_timeout,
             self.rx.clone(),
             self.accept_timeout,

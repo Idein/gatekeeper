@@ -1,10 +1,8 @@
-#![cfg(test)]
-use std::path::PathBuf;
-
 #[test]
 #[ignore]
 fn get_main() {
     use std::io::prelude::*;
+    use std::path::PathBuf;
 
     use log::*;
     use regex::Regex;
@@ -33,7 +31,7 @@ fn get_main() {
         let mut line = String::new();
         let mut content_length = None;
         let re = Regex::new(r"Content-Length: (\d+)\r\n").unwrap();
-        while let Ok(_) = conn.read_line(&mut line) {
+        while conn.read_line(&mut line).is_ok() {
             debug!("line: {:?}", line);
             if line == "\r\n" {
                 break;

@@ -128,13 +128,13 @@ impl From<SocketAddr> for Address {
 
 impl From<SocketAddrV4> for Address {
     fn from(addr: SocketAddrV4) -> Self {
-        Address::IpAddr(addr.ip().clone().into(), addr.port())
+        Address::IpAddr((*addr.ip()).into(), addr.port())
     }
 }
 
 impl From<SocketAddrV6> for Address {
     fn from(addr: SocketAddrV6) -> Self {
-        Address::IpAddr(addr.ip().clone().into(), addr.port())
+        Address::IpAddr((*addr.ip()).into(), addr.port())
     }
 }
 
@@ -582,7 +582,7 @@ IpAddr:
   prefix: 24
 "#;
             assert!(
-                match serde_yaml::from_str::<AddressPattern>(&ipv4).unwrap() {
+                match serde_yaml::from_str::<AddressPattern>(ipv4).unwrap() {
                     AddressPattern::IpAddr {
                         addr: IpAddr::V4(addr),
                         prefix,
@@ -600,7 +600,7 @@ IpAddr:
   addr: 192.168.0.1
   prefix: 33
 "#;
-            let res = serde_yaml::from_str::<AddressPattern>(&ipv4_invalid).unwrap_err();
+            let res = serde_yaml::from_str::<AddressPattern>(ipv4_invalid).unwrap_err();
             println!("invalid: {}", res);
         }
     }
