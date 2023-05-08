@@ -7,22 +7,21 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 
 use log::*;
-use structopt::*;
 
 use gatekeeper as gk;
 
-#[derive(StructOpt, Debug)]
-#[structopt(name = "gatekeeper")]
+#[derive(clap::Parser, Debug)]
+#[command()]
 struct Opt {
-    #[structopt(short = "p", long = "port", default_value = "1080")]
+    #[arg(short = 'p', long = "port", default_value = "1080")]
     /// Set port to listen on
     port: u16,
 
-    #[structopt(short = "i", long = "ip", default_value = "0.0.0.0")]
+    #[arg(short = 'i', long = "ip", default_value = "0.0.0.0")]
     /// Set ipaddress to listen on
     ipaddr: IpAddr,
 
-    #[structopt(short = "r", long = "rule")]
+    #[arg(short = 'r', long = "rule")]
     /// Set path to connection rule file (format: yaml)
     rulefile: Option<PathBuf>,
 }
@@ -39,7 +38,8 @@ fn main() {
     pretty_env_logger::init_timed();
 
     println!("gatekeeperd");
-    let opt = Opt::from_args();
+    use clap::Parser;
+    let opt = Opt::parse();
     debug!("option: {:?}", opt);
 
     let config = match opt.rulefile {
