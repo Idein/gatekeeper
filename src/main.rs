@@ -35,7 +35,7 @@ fn set_handler(signals: &[i32], handler: impl Fn(i32) + Send + 'static) -> io::R
 
 fn main() {
     use signal_hook::consts::signal::*;
-    pretty_env_logger::init_timed();
+    env_logger::init();
 
     println!("gatekeeperd");
     use clap::Parser;

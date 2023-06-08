@@ -196,7 +196,7 @@ mod tests {
         let client_addr = "192.168.1.1:45678".parse().unwrap();
         let dummy_client_conn = Box::new(IterBuffer {
             iter: vec![b"hello".to_vec(), b" ".to_vec(), b"client".to_vec()].into_iter(),
-            wr_buff: client_writer.clone(),
+            wr_buff: client_writer,
         }) as Box<dyn ByteStream>;
 
         let server_addr = "192.168.1.1:45678".parse().unwrap();
@@ -219,13 +219,10 @@ mod tests {
             .unwrap()
         };
 
-        assert!(
-            if let ServerCommand::Disconnect(SessionId(0)) = rx_server.recv().unwrap() {
-                true
-            } else {
-                false
-            }
-        );
+        assert!(matches!(
+            rx_server.recv().unwrap(),
+            ServerCommand::Disconnect(SessionId(0))
+        ));
 
         let result = handle.join().unwrap();
         assert!(matches!(result, Err(e) if e.kind() == &ErrorKind::Io));
