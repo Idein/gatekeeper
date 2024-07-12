@@ -14,7 +14,7 @@ COPY Cargo.lock     .
 RUN mkdir -p /gatekeeper/.cargo && cargo vendor > /gatekeeper/.cargo/config
 
 # hadolint ignore=DL3007
-FROM balenalib/rpi-raspbian:latest AS builder
+FROM --platform=$BUILDPLATFORM balenalib/rpi-raspbian:latest AS builder
 
 ENV HOME /root
 
@@ -48,7 +48,7 @@ RUN rustup target add "$TARGET" && \
     cp "target/$TARGET/release/gatekeeperd" /
 
 # hadolint ignore=DL3007
-FROM --platform=$BUILDPLATFORM balenalib/rpi-raspbian:latest AS runner
+FROM --platform=$TARGETPLATFORM balenalib/rpi-raspbian:latest AS runner
 
 COPY --from=builder /gatekeeperd /
 
