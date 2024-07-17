@@ -229,6 +229,28 @@ Value of these fields are either `Any` or `Specif`.
           Specif: Tcp
     ```
 
+## Build Docker Image
+
+### x86_64
+
+For building docker image for x86_64.
+
+```
+$ docker-compose build gatekeeper
+```
+
+### x86_64 and Arm
+
+For building docker images for x86_64 and armv6/7:
+
+```
+$ GATEKEEPER_VER=<version> docker buildx bake --load
+```
+
+The docker images `idein/gatekeeper:<version>-<arch>` are added to your docker env.
+Where the `arch` is `x86_64` and `armv6`, `armv7`.
+
+
 ## Integration Test
 
 1. Prepare the socks and http server
