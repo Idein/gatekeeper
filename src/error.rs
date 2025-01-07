@@ -1,3 +1,4 @@
+#![allow(non_local_definitions)]
 use std::fmt;
 use std::fmt::Display;
 

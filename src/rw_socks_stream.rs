@@ -10,6 +10,7 @@ use crate::model;
 use crate::model::{Error, ErrorKind, SocksStream};
 use crate::raw_message::{self as raw, *};
 
+#[allow(unused)]
 trait ReadSocksExt {
     fn read_u8(&mut self) -> Result<u8, Error>;
     fn read_u16(&mut self) -> Result<u16, Error>;
@@ -23,6 +24,7 @@ trait ReadSocksExt {
     fn read_udp(&mut self) -> Result<UdpHeader, Error>;
 }
 
+#[allow(unused)]
 trait WriteSocksExt {
     fn write_u8(&mut self, v: u8) -> Result<(), Error>;
     fn write_u16(&mut self, v: u16) -> Result<(), Error>;
@@ -213,7 +215,7 @@ impl<'a, T> ReadWriteStreamRef<'a, T> {
     }
 }
 
-impl<'a, T> SocksStream for ReadWriteStreamRef<'a, T>
+impl<T> SocksStream for ReadWriteStreamRef<'_, T>
 where
     T: io::Read + io::Write,
 {

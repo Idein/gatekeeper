@@ -1,5 +1,5 @@
-///! Server control command
-///!
+//! Server control command
+//!
 use std::fmt;
 use std::net::SocketAddr;
 
