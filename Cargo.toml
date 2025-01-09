@@ -17,23 +17,28 @@ path = "src/lib.rs"
 [[bin]]
 name = "gatekeeperd"
 path = "src/main.rs"
+required-features = ["build-binary"]
 
 [dependencies]
 derive_more = "0.99"
 failure = "0.1.6"
 log = "0.4.6"
 socket2 = "0.5"
-env_logger = "0.10"
+env_logger = "0.11.6"
 rand = "0.8"
 regex = "1.5.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_regex = "1.1"
 serde_yaml = "0.8.26"
 signal-hook = "0.3"
-clap = { version = "4.1", features = ["derive"] }
-nix = "0.26"
+clap = { version = "4.1", features = ["derive"], optional = true }
+nix = "0.26.4"
 libc = "0.2.60"
 
 [dev-dependencies]
 socks = "0.3.2"
+
+[features]
+build-binary = ["clap"]
+default = ["build-binary"]
 

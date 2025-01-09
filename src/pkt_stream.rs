@@ -3,6 +3,7 @@ use std::net;
 
 use crate::model::{Error, ErrorKind};
 
+#[allow(unused)]
 pub trait PktStream {
     fn pkt_size(&self) -> usize;
     fn recv_pkt(&mut self) -> Result<&[u8], Error>;

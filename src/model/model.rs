@@ -29,6 +29,7 @@
 //!   |                 |                 |
 //! ```
 //!
+#![allow(non_local_definitions)]
 use std::fmt;
 use std::net::ToSocketAddrs;
 pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -686,7 +687,7 @@ impl ConnectRule {
     }
 
     pub fn is_any(&self) -> bool {
-        if let Some(entry) = self.rules.get(0) {
+        if let Some(entry) = self.rules.first() {
             use ConnectRuleEntry::*;
             match entry {
                 Allow(pat) => pat.is_any(),

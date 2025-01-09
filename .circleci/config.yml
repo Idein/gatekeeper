@@ -14,11 +14,8 @@ constants:
 commands:
   restore-rust-cache:
     steps:
-      - run: |
-          cat Cargo.lock >> /tmp/build-dep
-          cat rust-toolchain >> /tmp/build-dep
       - restore_cache:
-          key: &cache-key-rust cache-cargo-target-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "/tmp/build-dep" }}
+          key: &cache-key-rust cache-cargo-target-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "rust-toolchain.toml" }}-{{ checksum "Cargo.lock" }}
   save-rust-cache:
     steps:
       - save_cache:
@@ -29,7 +26,7 @@ commands:
   install-rustup:
     steps:
       - restore_cache:
-          key: &cache-key-rustup cache-rustup-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "/tmp/rustup" }}
+          key: &cache-key-rustup cache-rustup-{{ .Environment.CIRCLE_JOB }}-{{ .Environment.CIRCLECI_CACHE_VERSION }}-{{ checksum "rust-toolchain.toml" }}
       - run:
           name: Install Rust
           command: |
@@ -38,7 +35,7 @@ commands:
                 rustup update
             else
                 curl -sSfL https://sh.rustup.rs > rustup.sh
-                export RUST_CHANNEL=`cat rust-toolchain`
+                export RUST_CHANNEL=1.83.0
                 sh rustup.sh -y --default-toolchain ${RUST_CHANNEL}-x86_64-unknown-linux-gnu --profile minimal
             fi
       - save_cache:
@@ -66,7 +63,7 @@ commands:
 jobs:
   build:
     docker:
-      - image: cimg/rust:1.67.1
+      - image: cimg/rust:1.83.0
         environment:
           RUST_BACKTRACE: 1
           CARGO_HOME: /home/circleci/.cargo
@@ -93,6 +90,10 @@ jobs:
           name: Lint
           command: cargo clippy -- -D warnings
       - run:
+          name: Build Gatekeeper as library
+          command: |
+            cargo build --verbose --no-default-features
+      - run:
           name: Build Gatekeeper
           command: |
             cargo build --verbose
@@ -118,7 +119,6 @@ jobs:
           name: Merge origin/master
           command: |
             git merge --no-edit origin/master
-      - run: cat rust-toolchain >> /tmp/rustup
       - install-rustup
       - install-node
       - restore-rust-cache

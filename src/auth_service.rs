@@ -10,9 +10,6 @@ pub trait AuthService: Send {
     /// returns `None` means that no acceptable methods.
     fn select(&self, candidates: &[Method]) -> Result<Option<Method>, Error>;
 
-    /// enumerate supported auth method
-    fn supported(&self) -> &[Method];
-
     /// authentication then return Wrapped stream
     fn authorize<'a, B>(&self, method: Method, conn: B) -> Result<BoxedStream<'a>, Error>
     where
@@ -21,15 +18,11 @@ pub trait AuthService: Send {
 
 /// `NoAuth` method compeller
 #[derive(Debug, Clone)]
-pub struct NoAuthService {
-    no_auth: Method,
-}
+pub struct NoAuthService {}
 
 impl NoAuthService {
     pub fn new() -> Self {
-        Self {
-            no_auth: Method::NoAuth,
-        }
+        Self {}
     }
 }
 
@@ -40,10 +33,6 @@ impl AuthService for NoAuthService {
         } else {
             Ok(None)
         }
-    }
-
-    fn supported(&self) -> &[Method] {
-        std::slice::from_ref(&self.no_auth)
     }
 
     fn authorize<'a, B>(&self, method: Method, conn: B) -> Result<BoxedStream<'a>, Error>
@@ -70,10 +59,6 @@ pub mod test {
     impl AuthService for RejectService {
         fn select(&self, _candidates: &[Method]) -> Result<Option<Method>, Error> {
             Ok(None)
-        }
-
-        fn supported(&self) -> &[Method] {
-            &[]
         }
 
         /// authentication then return Wrapped stream

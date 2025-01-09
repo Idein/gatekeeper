@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.50.0-slim-buster AS fetcher
+FROM --platform=$BUILDPLATFORM rust:1.83.0-slim-buster AS fetcher
 
 ENV HOME /root
 
@@ -7,7 +7,7 @@ WORKDIR /gatekeeper
 RUN cargo init
 
 COPY src            src
-COPY rust-toolchain .
+COPY rust-toolchain.toml .
 COPY Cargo.toml     .
 COPY Cargo.lock     .
 
