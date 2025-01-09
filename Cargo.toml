@@ -1,6 +1,6 @@
 [package]
 name = "gatekeeper"
-version = "2.4.1"
+version = "2.5.0"
 repository = "https://github.com/Idein/gatekeeper"
 authors = ["takayuki goto <takayuki@idein.jp>"]
 edition = "2021"
