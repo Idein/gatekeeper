@@ -202,27 +202,25 @@ impl ConnectRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Display)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Error)]
 pub enum ConnectError {
     /// general server failure
+    #[error("server failure")]
     ServerFailure,
+    #[error("connection not allowed")]
     ConnectionNotAllowed,
+    #[error("network unreachable")]
     NetworkUnreachable,
+    #[error("host unreachable")]
     HostUnreachable,
+    #[error("connection refused")]
     ConnectionRefused,
+    #[error("ttl expired")]
     TtlExpired,
+    #[error("command not supported")]
     CommandNotSupported,
+    #[error("addr type not supported")]
     AddrTypeNotSupported,
-}
-
-impl std::error::Error for ConnectError {
-    fn description(&self) -> &str {
-        "ConnectError"
-    }
-
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
 }
 
 pub type ConnectResult = std::result::Result<(), ConnectError>;

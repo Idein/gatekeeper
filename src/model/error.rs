@@ -8,10 +8,10 @@ use crate::model::*;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug)]
 pub enum Error {
-    #[error("io error")]
-    Io,
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
     #[error("poisoned error: {0}")]
     Poisoned(String),
     #[error("disconnected channel error: {name}")]
@@ -42,6 +42,8 @@ pub enum Error {
     /// rejected by external server
     #[error("connection refused: {addr}: {protocol}")]
     ConnectionRefused { addr: Address, protocol: L4Protocol },
+    #[error(transparent)]
+    Unknown(#[from] anyhow::Error),
 }
 
 impl Error {
@@ -73,7 +75,7 @@ impl Error {
         use ConnectError as CErr;
         use Error as E;
         match self {
-            E::Io => CErr::ServerFailure,
+            E::Io(_) => CErr::ServerFailure,
             E::Poisoned(_) => CErr::ServerFailure,
             E::Disconnected { .. } => CErr::ServerFailure,
             E::MessageFormat { .. } => CErr::ServerFailure,
@@ -88,13 +90,8 @@ impl Error {
             E::AddressNotAvailable { .. } => CErr::ServerFailure,
             E::ConnectionNotAllowed { .. } => CErr::ConnectionNotAllowed,
             E::ConnectionRefused { .. } => CErr::ConnectionRefused,
+            E::Unknown(_) => CErr::ServerFailure,
         }
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(_error: std::io::Error) -> Self {
-        Error::Io
     }
 }
 

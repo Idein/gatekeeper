@@ -52,7 +52,7 @@ impl Connector for TcpUdpConnector {
 fn conn_error(io_err: io::Error, addr: Address, prot: L4Protocol) -> model::Error {
     match io_err.kind() {
         io::ErrorKind::ConnectionRefused => Error::connection_refused(addr, prot),
-        _ => Error::Io,
+        _ => Error::Io(io_err),
     }
 }
 
@@ -124,7 +124,7 @@ pub mod test {
                         }
                         ConnectionNotAllowed => Error::connection_not_allowed(addr, Tcp),
                         ConnectionRefused => Error::connection_refused(addr, Tcp),
-                        _ => Error::Io,
+                        _ => Error::Unknown(anyhow::anyhow!("{:?}", err)),
                     };
                     Err(kind)
                 }

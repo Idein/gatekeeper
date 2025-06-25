@@ -225,7 +225,7 @@ mod tests {
         ));
 
         let result = handle.join().unwrap();
-        assert!(matches!(result, Err(Error::Io)));
+        assert!(matches!(result, Err(Error::Io(_))));
     }
 
     #[test]

@@ -20,6 +20,7 @@ path = "src/main.rs"
 required-features = ["build-binary"]
 
 [dependencies]
+anyhow = "1.0.98"
 derive_more = "0.99"
 thiserror = "1.0"
 log = "0.4.6"

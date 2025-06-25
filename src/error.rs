@@ -8,8 +8,8 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("io error")]
-    Io,
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
     #[error("config error")]
     Config,
     #[error("auth error")]
@@ -24,30 +24,25 @@ pub enum Error {
     Unknown,
 }
 
-impl From<std::io::Error> for Error {
-    fn from(_error: std::io::Error) -> Self {
-        Error::Io
-    }
-}
-
 impl From<model::Error> for Error {
     fn from(err: model::Error) -> Self {
         match err {
-            model::Error::Io => Error::Io,
-            model::Error::Poisoned(_) => Error::Io,
-            model::Error::Disconnected { .. } => Error::Io,
+            model::Error::Io(io_err) => Error::Io(io_err),
+            model::Error::Poisoned(_) => Error::Unknown,
+            model::Error::Disconnected { .. } => Error::Unknown,
             model::Error::MessageFormat { .. } => Error::Unknown,
             model::Error::Authentication => Error::Auth,
             model::Error::NoAcceptableMethod => Error::NotSupported,
             model::Error::UnrecognizedUsernamePassword => Error::Auth,
             model::Error::CommandNotSupported { .. } => Error::NotSupported,
-            model::Error::HostUnreachable { .. } => Error::Io,
-            model::Error::DomainNotResolved { .. } => Error::Io,
-            model::Error::PacketSizeLimitExceeded { .. } => Error::Io,
-            model::Error::AddressAlreadInUse { .. } => Error::Io,
-            model::Error::AddressNotAvailable { .. } => Error::Io,
+            model::Error::HostUnreachable { .. } => Error::Unknown,
+            model::Error::DomainNotResolved { .. } => Error::Unknown,
+            model::Error::PacketSizeLimitExceeded { .. } => Error::Unknown,
+            model::Error::AddressAlreadInUse { .. } => Error::Unknown,
+            model::Error::AddressNotAvailable { .. } => Error::Unknown,
             model::Error::ConnectionNotAllowed { .. } => Error::NotAllowed,
-            model::Error::ConnectionRefused { .. } => Error::Io,
+            model::Error::ConnectionRefused { .. } => Error::Unknown,
+            model::Error::Unknown(_) => Error::Unknown,
         }
     }
 }

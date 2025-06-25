@@ -76,7 +76,12 @@ where
     }
 
     fn read_rep(&mut self) -> Result<ResponseCode, Error> {
-        let rep = ResponseCode::from_u8(self.read_u8()?).map_err(|_| Error::Io)?;
+        let rep = ResponseCode::from_u8(self.read_u8()?).map_err(|_| {
+            Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid response code",
+            ))
+        })?;
         Ok(rep)
     }
 

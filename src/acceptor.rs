@@ -146,6 +146,6 @@ fn addr_error(io_err: io::Error, addr: SocketAddr) -> model::Error {
     match io_err.kind() {
         io::ErrorKind::AddrInUse => Error::AddressAlreadInUse { addr },
         io::ErrorKind::AddrNotAvailable => Error::AddressNotAvailable { addr },
-        _ => Error::Io,
+        _ => Error::Io(io_err),
     }
 }
