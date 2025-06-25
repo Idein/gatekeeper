@@ -8,8 +8,6 @@ use crate::model::error::Error;
 use crate::model::model::*;
 use crate::pkt_stream::{PktStream, UdpPktStream};
 
-use failure::Fail;
-
 pub trait Connector: Send {
     type B: ByteStream;
     type P: PktStream;
@@ -52,19 +50,16 @@ impl Connector for TcpUdpConnector {
 }
 
 fn conn_error(io_err: io::Error, addr: Address, prot: L4Protocol) -> model::Error {
-    use model::ErrorKind;
     match io_err.kind() {
-        io::ErrorKind::ConnectionRefused => ErrorKind::connection_refused(addr, prot).into(),
-        _ => io_err.context(ErrorKind::Io),
+        io::ErrorKind::ConnectionRefused => Error::connection_refused(addr, prot),
+        _ => Error::Io,
     }
-    .into()
 }
 
 #[cfg(test)]
 pub mod test {
     use super::*;
     use crate::byte_stream::ByteStream;
-    use model::ErrorKind;
     use std::collections::BTreeMap;
     use std::iter::FromIterator;
 
@@ -113,8 +108,8 @@ pub mod test {
                     use L4Protocol::*;
                     let kind = match err {
                         NetworkUnreachable => match addr {
-                            Domain(domain, port) => ErrorKind::DomainNotResolved { domain, port },
-                            IpAddr(ipaddr, port) => ErrorKind::HostUnreachable {
+                            Domain(domain, port) => Error::DomainNotResolved { domain, port },
+                            IpAddr(ipaddr, port) => Error::HostUnreachable {
                                 host: ipaddr.to_string(),
                                 port,
                             },
@@ -125,13 +120,13 @@ pub mod test {
                                 Domain(domain, _) => domain,
                                 IpAddr(ipaddr, _) => ipaddr.to_string(),
                             };
-                            ErrorKind::HostUnreachable { host, port }
+                            Error::HostUnreachable { host, port }
                         }
-                        ConnectionNotAllowed => ErrorKind::connection_not_allowed(addr, Tcp),
-                        ConnectionRefused => ErrorKind::connection_refused(addr, Tcp),
-                        _ => ErrorKind::Io,
+                        ConnectionNotAllowed => Error::connection_not_allowed(addr, Tcp),
+                        ConnectionRefused => Error::connection_refused(addr, Tcp),
+                        _ => Error::Io,
                     };
-                    Err(kind.into())
+                    Err(kind)
                 }
             }
         }

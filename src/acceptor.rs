@@ -6,12 +6,11 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use failure::Fail;
 use log::*;
 
 use crate::byte_stream::ByteStream;
 use crate::model;
-use crate::model::{Error, ErrorKind};
+use crate::model::Error;
 use crate::tcp_listener_ext::*;
 
 pub struct TcpAcceptor {
@@ -54,7 +53,7 @@ fn check_message(rx: &Arc<Mutex<Receiver<()>>>) -> Result<bool, Error> {
     match rx.lock()?.try_recv() {
         Ok(()) => Ok(true),
         Err(TryRecvError::Empty) => Ok(false),
-        Err(TryRecvError::Disconnected) => Err(ErrorKind::disconnected("acceptor").into()),
+        Err(TryRecvError::Disconnected) => Err(Error::disconnected("acceptor")),
     }
 }
 
@@ -145,9 +144,8 @@ impl Binder for TcpBinder {
 
 fn addr_error(io_err: io::Error, addr: SocketAddr) -> model::Error {
     match io_err.kind() {
-        io::ErrorKind::AddrInUse => ErrorKind::AddressAlreadInUse { addr }.into(),
-        io::ErrorKind::AddrNotAvailable => ErrorKind::AddressNotAvailable { addr }.into(),
-        _ => io_err.context(ErrorKind::Io),
+        io::ErrorKind::AddrInUse => Error::AddressAlreadInUse { addr },
+        io::ErrorKind::AddrNotAvailable => Error::AddressNotAvailable { addr },
+        _ => Error::Io,
     }
-    .into()
 }

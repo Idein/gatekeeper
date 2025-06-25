@@ -1,104 +1,53 @@
 #![allow(non_local_definitions)]
-use std::fmt;
-use std::fmt::Display;
 
-use failure::{Backtrace, Context, Fail};
+use thiserror::Error;
 
 use crate::model;
 
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-#[derive(Fail, Debug)]
-pub enum ErrorKind {
-    #[fail(display = "io error")]
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("io error")]
     Io,
-    #[fail(display = "config error")]
+    #[error("config error")]
     Config,
-    #[fail(display = "auth error")]
+    #[error("auth error")]
     Auth,
-    #[fail(display = "permission error")]
+    #[error("permission error")]
     Permission,
-    #[fail(display = "not supported error")]
+    #[error("not supported error")]
     NotSupported,
-    #[fail(display = "not allowed error")]
+    #[error("not allowed error")]
     NotAllowed,
-    #[fail(display = "unknown error")]
+    #[error("unknown error")]
     Unknown,
 }
 
-#[derive(Debug)]
-pub struct Error {
-    inner: Context<ErrorKind>,
-}
-
-impl Fail for Error {
-    fn cause(&self) -> Option<&dyn Fail> {
-        self.inner.cause()
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        self.inner.backtrace()
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.inner, f)
-    }
-}
-
-impl Error {
-    pub fn new(inner: Context<ErrorKind>) -> Error {
-        Error { inner }
-    }
-
-    pub fn kind(&self) -> &ErrorKind {
-        self.inner.get_context()
-    }
-}
-
-impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Error {
-        Error {
-            inner: Context::new(kind),
-        }
-    }
-}
-
-impl From<Context<ErrorKind>> for Error {
-    fn from(inner: Context<ErrorKind>) -> Error {
-        Error { inner }
-    }
-}
-
 impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        Error {
-            inner: error.context(ErrorKind::Io),
-        }
+    fn from(_error: std::io::Error) -> Self {
+        Error::Io
     }
 }
 
 impl From<model::Error> for Error {
     fn from(err: model::Error) -> Self {
-        use model::ErrorKind as K;
-        let ctx = match err.kind() {
-            K::Io => err.context(ErrorKind::Io),
-            K::Poisoned(_) => err.context(ErrorKind::Io),
-            K::Disconnected { .. } => err.context(ErrorKind::Io),
-            K::MessageFormat { .. } => err.context(ErrorKind::Unknown),
-            K::Authentication => err.context(ErrorKind::Auth),
-            K::NoAcceptableMethod => err.context(ErrorKind::NotSupported),
-            K::UnrecognizedUsernamePassword => err.context(ErrorKind::Auth),
-            K::CommandNotSupported { .. } => err.context(ErrorKind::NotSupported),
-            K::HostUnreachable { .. } => err.context(ErrorKind::Io),
-            K::DomainNotResolved { .. } => err.context(ErrorKind::Io),
-            K::PacketSizeLimitExceeded { .. } => err.context(ErrorKind::Io),
-            K::AddressAlreadInUse { .. } => err.context(ErrorKind::Io),
-            K::AddressNotAvailable { .. } => err.context(ErrorKind::Io),
-            K::ConnectionNotAllowed { .. } => err.context(ErrorKind::NotAllowed),
-            K::ConnectionRefused { .. } => err.context(ErrorKind::Io),
-        };
-        Error { inner: ctx }
+        match err {
+            model::Error::Io => Error::Io,
+            model::Error::Poisoned(_) => Error::Io,
+            model::Error::Disconnected { .. } => Error::Io,
+            model::Error::MessageFormat { .. } => Error::Unknown,
+            model::Error::Authentication => Error::Auth,
+            model::Error::NoAcceptableMethod => Error::NotSupported,
+            model::Error::UnrecognizedUsernamePassword => Error::Auth,
+            model::Error::CommandNotSupported { .. } => Error::NotSupported,
+            model::Error::HostUnreachable { .. } => Error::Io,
+            model::Error::DomainNotResolved { .. } => Error::Io,
+            model::Error::PacketSizeLimitExceeded { .. } => Error::Io,
+            model::Error::AddressAlreadInUse { .. } => Error::Io,
+            model::Error::AddressNotAvailable { .. } => Error::Io,
+            model::Error::ConnectionNotAllowed { .. } => Error::NotAllowed,
+            model::Error::ConnectionRefused { .. } => Error::Io,
+        }
     }
 }

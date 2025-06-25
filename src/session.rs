@@ -11,7 +11,7 @@ use crate::byte_stream::ByteStream;
 use crate::connector::Connector;
 use crate::model::dao::*;
 use crate::model::model::*;
-use crate::model::{Error, ErrorKind};
+use crate::model::Error;
 use crate::relay::{self, RelayHandle};
 use crate::rw_socks_stream::ReadWriteStream;
 use crate::server_command::ServerCommand;
@@ -190,7 +190,7 @@ fn perform_command(
     match cmd {
         Command::Connect => {}
         cmd @ Command::Bind | cmd @ Command::UdpAssociate => {
-            return Err(ErrorKind::command_not_supported(cmd).into());
+            return Err(Error::command_not_supported(cmd));
         }
     };
     // filter out request not sufficies the connection rule
@@ -215,7 +215,7 @@ fn negotiate_auth_method(
     };
     socks.send_method_selection(method_sel)?;
     match method_sel.method {
-        Method::NoMethods => Err(ErrorKind::NoAcceptableMethod.into()),
+        Method::NoMethods => Err(Error::NoAcceptableMethod),
         _ => Ok(method_sel),
     }
 }
@@ -224,7 +224,7 @@ fn check_rule(rule: &ConnectRule, addr: Address, proto: L4Protocol) -> Result<()
     if rule.check(addr.clone(), proto) {
         Ok(())
     } else {
-        Err(ErrorKind::connection_not_allowed(addr, proto).into())
+        Err(Error::connection_not_allowed(addr, proto))
     }
 }
 
@@ -275,13 +275,12 @@ mod test {
         );
         println!("session: {:?}", session);
         let src = BufferStream::with_buffer(vec![5, 1, 0].into(), vec![].into());
-        assert_eq!(
+        assert!(matches!(
             session
                 .make_session("192.168.0.2:12345".parse().unwrap(), src)
-                .unwrap_err()
-                .kind(),
-            &ErrorKind::NoAcceptableMethod
-        );
+                .unwrap_err(),
+            Error::NoAcceptableMethod
+        ));
     }
 
     #[test]
@@ -309,13 +308,14 @@ mod test {
             cursor.into_inner()
         };
         let src = BufferStream::with_buffer(buff.into(), vec![].into());
-        assert_eq!(
+        assert!(matches!(
             session
                 .make_session("192.168.1.1:34567".parse().unwrap(), src)
-                .unwrap_err()
-                .kind(),
-            &ErrorKind::command_not_supported(Command::UdpAssociate)
-        );
+                .unwrap_err(),
+            Error::CommandNotSupported {
+                cmd: Command::UdpAssociate
+            }
+        ));
     }
 
     #[test]
@@ -350,13 +350,12 @@ mod test {
             cursor.into_inner()
         };
         let src = BufferStream::with_buffer(buff.into(), vec![].into());
-        assert_eq!(
+        assert!(matches!(
             session
                 .make_session("192.168.1.1:34567".parse().unwrap(), src)
-                .unwrap_err()
-                .kind(),
-            &ErrorKind::connection_not_allowed(connect_to, L4Protocol::Tcp)
-        );
+                .unwrap_err(),
+            Error::ConnectionNotAllowed { addr, protocol: L4Protocol::Tcp } if addr == connect_to
+        ));
     }
 
     #[test]
@@ -394,13 +393,12 @@ mod test {
             cursor.into_inner()
         };
         let src = BufferStream::with_buffer(buff.into(), vec![].into());
-        assert_eq!(
+        assert!(matches!(
             session
                 .make_session("192.168.1.1:34567".parse().unwrap(), src)
-                .unwrap_err()
-                .kind(),
-            &ErrorKind::connection_refused(connect_to, L4Protocol::Tcp)
-        );
+                .unwrap_err(),
+            Error::ConnectionRefused { addr, protocol: L4Protocol::Tcp } if addr == connect_to
+        ));
     }
 
     fn gen_random_vec(size: usize) -> Vec<u8> {

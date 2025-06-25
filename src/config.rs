@@ -2,10 +2,8 @@ use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::error::{Error, ErrorKind};
+use crate::error::Error;
 use crate::model::{ConnectRule, IpAddr, Ipv4Addr, SocketAddr};
-
-use failure::ResultExt;
 
 /// Server configuration
 #[derive(Debug, Clone)]
@@ -80,7 +78,7 @@ impl ServerConfig {
     ///
     pub fn with_file(server_ip: IpAddr, server_port: u16, rulefile: &Path) -> Result<Self, Error> {
         let path = File::open(rulefile)?;
-        let conn_rule = serde_yaml::from_reader(path).context(ErrorKind::Config)?;
+        let conn_rule = serde_yaml::from_reader(path).map_err(|_| Error::Config)?;
         Ok(ServerConfig {
             server_ip,
             server_port,
