@@ -36,10 +36,10 @@ pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketA
 use std::str::FromStr;
 
 use derive_more::{Display, From, Into};
-use failure::Fail;
 use log::*;
 use regex::{escape, Regex};
 use serde::*;
+use thiserror::Error;
 
 pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion(5);
 
@@ -202,27 +202,25 @@ impl ConnectRequest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Display)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Error)]
 pub enum ConnectError {
     /// general server failure
+    #[error("server failure")]
     ServerFailure,
+    #[error("connection not allowed")]
     ConnectionNotAllowed,
+    #[error("network unreachable")]
     NetworkUnreachable,
+    #[error("host unreachable")]
     HostUnreachable,
+    #[error("connection refused")]
     ConnectionRefused,
+    #[error("ttl expired")]
     TtlExpired,
+    #[error("command not supported")]
     CommandNotSupported,
+    #[error("addr type not supported")]
     AddrTypeNotSupported,
-}
-
-impl std::error::Error for ConnectError {
-    fn description(&self) -> &str {
-        "ConnectError"
-    }
-
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
 }
 
 pub type ConnectResult = std::result::Result<(), ConnectError>;
@@ -278,20 +276,12 @@ pub enum DomainPattern {
     },
 }
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum InvalidPrefix {
+    #[error("invalid prefix for v4 address {addr}/{prefix}")]
     V4 { addr: Ipv4Addr, prefix: u8 },
+    #[error("invalid prefix for v6 address {addr}/{prefix}")]
     V6 { addr: Ipv6Addr, prefix: u8 },
-}
-
-impl fmt::Display for InvalidPrefix {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use InvalidPrefix::*;
-        match self {
-            V4 { addr, prefix } => write!(f, "{} is too large for {}", prefix, addr),
-            V6 { addr, prefix } => write!(f, "{} is too large for {}", prefix, addr),
-        }
-    }
 }
 
 impl de::Expected for InvalidPrefix {

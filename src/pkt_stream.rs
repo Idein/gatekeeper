@@ -1,7 +1,7 @@
 use std::io;
 use std::net;
 
-use crate::model::{Error, ErrorKind};
+use crate::model::Error;
 
 #[allow(unused)]
 pub trait PktStream {
@@ -38,11 +38,10 @@ impl PktStream for UdpPktStream {
 
     fn send_pkt(&self, pkt: &[u8]) -> Result<(), Error> {
         if pkt.len() > self.pkt_size {
-            return Err(ErrorKind::PacketSizeLimitExceeded {
+            return Err(Error::PacketSizeLimitExceeded {
                 size: pkt.len(),
                 limit: self.pkt_size,
-            }
-            .into());
+            });
         }
         self.socket
             .send(pkt)

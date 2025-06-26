@@ -7,7 +7,7 @@ use std::thread::{self, JoinHandle};
 use log::*;
 
 use crate::byte_stream::{BoxedStream, ByteStream};
-use crate::model::{Error, ErrorKind};
+use crate::model::Error;
 use crate::session::DisconnectGuard;
 use crate::thread::spawn_thread;
 
@@ -151,9 +151,9 @@ fn check_termination(rx: &Arc<Mutex<mpsc::Receiver<()>>>) -> Result<bool, Error>
             // trace!("message empty");
             Ok(false)
         }
-        Err(TryRecvError::Disconnected) => {
-            Err(ErrorKind::disconnected(thread::current().name().unwrap_or("<anonymous>")).into())
-        }
+        Err(TryRecvError::Disconnected) => Err(Error::disconnected(
+            thread::current().name().unwrap_or("<anonymous>"),
+        )),
     }
 }
 
@@ -225,7 +225,7 @@ mod tests {
         ));
 
         let result = handle.join().unwrap();
-        assert!(matches!(result, Err(e) if e.kind() == &ErrorKind::Io));
+        assert!(matches!(result, Err(Error::Io(_))));
     }
 
     #[test]

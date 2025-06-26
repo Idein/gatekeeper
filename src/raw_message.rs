@@ -434,7 +434,7 @@ impl std::error::Error for TryFromAddress {
 
 impl From<TryFromAddress> for model::Error {
     fn from(err: TryFromAddress) -> Self {
-        model::ErrorKind::message_fmt(format_args!("{}", err)).into()
+        model::Error::message_fmt(format_args!("{}", err))
     }
 }
 

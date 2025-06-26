@@ -20,8 +20,9 @@ path = "src/main.rs"
 required-features = ["build-binary"]
 
 [dependencies]
+anyhow = "1.0.98"
 derive_more = "0.99"
-failure = "0.1.6"
+thiserror = "1.0"
 log = "0.4.6"
 socket2 = "0.5"
 env_logger = "0.11.6"

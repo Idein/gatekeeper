@@ -51,7 +51,7 @@ impl AuthService for NoAuthService {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::model::ErrorKind;
+    use crate::model::Error;
 
     #[derive(Debug)]
     pub struct RejectService;
@@ -66,7 +66,7 @@ pub mod test {
         where
             B: ByteStream + 'a,
         {
-            Err(ErrorKind::Authentication.into())
+            Err(Error::Authentication)
         }
     }
 }
