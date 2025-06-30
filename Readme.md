@@ -35,7 +35,7 @@ This can be used by adding `gatekeeper` to your dependencies in your project's `
 
 ```toml
 [dependencies]
-gatekeeper = "2.4.0"
+gatekeeper = "3.0.0"
 ```
 
 ### Executable
@@ -46,7 +46,7 @@ You can install gatekeeper as an executable (`gatekeeperd`) with `cargo install`
 $ cargo install gatekeeper
 $ gatekeeperd
 gatekeeperd
-gatekeeper 2.4.0
+gatekeeper 3.0.0
 ```
 
 ## How to use
